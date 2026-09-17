@@ -3,21 +3,30 @@
               xmlns:xs="http://www.w3.org/2001/XMLSchema">
 
   <!--
-    命令表：工具菜单下的「Raccoon」子菜单。
+    命令表：工具菜单下的「Raccoon」子菜单。按钮文案与 VS Code 版的 category "Raccoon" 对齐。
 
-    guidSHLMainMenu / IDG_VS_MM_TOOLS_OTHER 是 VS 自己的「工具」菜单及其附加项分组，
-    挂在它下面就不用自己造顶层菜单。按钮文案与 VS Code 版的 category "Raccoon" 对齐。
+    只有 stdidcmd.h 与 vsshlids.h 是 VSSDK 真的带的头文件（tools/vssdk/inc 下）。
+    这里曾经多引了一个 vscmdids.h——它不在这个包里，vsct.exe 直接报 VSCT1118 说找不到文件；
+    而 include 一旦失败，vsshlids.h 里的符号一个都进不来，连带把下面用到
+    IDM_VS_MENU_TOOLS 的 <Menu> 也判成未定义（VSCT1103）。
+    一个错的 Extern 会带出第二个看起来毫不相干的报错，别只盯着后一条修。
   -->
-
   <Extern href="stdidcmd.h" />
   <Extern href="vsshlids.h" />
-  <Extern href="vscmdids.h" />
 
   <Commands package="guidRaccoonPackage">
 
     <Menus>
+      <!--
+        「Raccoon」子菜单挂在「工具」菜单下。
+
+        IDM_VS_MENU_TOOLS 是 VS 自己「工具」菜单的 id（vsshlids.h，值 0x0085），
+        把它当 <Menu> 的 Parent 就是「在工具菜单里加一个子菜单」，这是官方 ShellCmdPlace.vsct
+        里的写法。原先写的 IDG_VS_MM_TOOLS_OTHER 在这个头文件里根本不存在，
+        vsct.exe 会报 VSCT1103 未定义。
+      -->
       <Menu guid="guidCmdSet" id="menuRaccoon" priority="0x0200" type="Menu">
-        <Parent guid="guidSHLMainMenu" id="IDG_VS_MM_TOOLS_OTHER" />
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_TOOLS" />
         <Strings>
           <ButtonText>Raccoon</ButtonText>
         </Strings>
