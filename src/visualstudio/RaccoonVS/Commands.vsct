@@ -20,13 +20,19 @@
       <!--
         「Raccoon」子菜单挂在「工具」菜单下。
 
-        IDM_VS_MENU_TOOLS 是 VS 自己「工具」菜单的 id（vsshlids.h，值 0x0085），
-        把它当 <Menu> 的 Parent 就是「在工具菜单里加一个子菜单」，这是官方 ShellCmdPlace.vsct
-        里的写法。原先写的 IDG_VS_MM_TOOLS_OTHER 在这个头文件里根本不存在，
-        vsct.exe 会报 VSCT1103 未定义。
+        挂法必须经过一个 Group：VS 自己的命令表（ShellCmdPlace.vsct，138 个 Menu）
+        里**没有任何一个** Menu 是直接挂到另一个 Menu 上的——全部先挂到一个 Group，
+        Group 再挂到目标菜单；官方 Menu_And_Commands 示例也是 Group→IDM_VS_MENU_TOOLS。
+        这里的形状是：grpRaccoonMenu（Group，挂在工具菜单上）← menuRaccoon（Menu，挂在
+        grpRaccoonMenu 上）← grpGames / grpTools（挂在 menuRaccoon 上）← 按钮。
+
+        原先写的是把 <Menu> 直接挂到 IDM_VS_MENU_TOOLS（一个 Menu）上。VSCT 编译不报错、
+        菜单表照样打进 dll、pkgdef 和注册表全对，但 shell 对这份 ctmenu 静默丢弃——
+        装上了什么都没有、日志一条不写。这个坑没有任何报错信号，只能靠对照 VS 自己的
+        命令表发现。
       -->
       <Menu guid="guidCmdSet" id="menuRaccoon" priority="0x0200" type="Menu">
-        <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_TOOLS" />
+        <Parent guid="guidCmdSet" id="grpRaccoonMenu" />
         <Strings>
           <ButtonText>Raccoon</ButtonText>
         </Strings>
@@ -34,6 +40,9 @@
     </Menus>
 
     <Groups>
+      <Group guid="guidCmdSet" id="grpRaccoonMenu" priority="0x0200">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_TOOLS" />
+      </Group>
       <Group guid="guidCmdSet" id="grpGames" priority="0x0100">
         <Parent guid="guidCmdSet" id="menuRaccoon" />
       </Group>
@@ -94,6 +103,7 @@
       <IDSymbol name="menuRaccoon" value="0x1000" />
       <IDSymbol name="grpGames" value="0x1010" />
       <IDSymbol name="grpTools" value="0x1020" />
+      <IDSymbol name="grpRaccoonMenu" value="0x1030" />
       <IDSymbol name="cmdidTetris" value="0x0100" />
       <IDSymbol name="cmdidGomoku" value="0x0200" />
       <IDSymbol name="cmdidSnake" value="0x0300" />
