@@ -26,22 +26,31 @@
   <Installation>
     <!--
       Community 这个 Id 覆盖全部 SKU（Pro / Enterprise 安装时会按 Community 报兼容）。
-      ProductArchitecture 必须是 amd64：VS 2022 起是纯 64 位进程。
 
-      下界 17.0、**不写上界**。原来的写法是 [17.0,18.0)，结果在 VS 2026 上装不上：
-      VSIXInstaller 报 NoApplicableSKUsException「此扩展不能安装在任何当前安装的产品上」，
-      日志里能看到它找到了「Visual Studio Community 2026」却判为不匹配。
-       VS 2026 是 18.x，被 18.0 这个上界挡在外面。
+      一个架构一个 InstallationTarget 元素（Schema 规定一个元素只放一个架构，同一 Id 可以
+      出现多次）。amd64 给 x64 机器，arm64 给 ARM64 机器——arm64 不是凑数声明：包里本来就有
+      runtimes\win-arm64\native\WebView2Loader.dll，托管代码是 AnyCPU，.NET Framework 4.8.1
+      起原生支持 ARM64，所以是真能跑。
 
-      VS 2026 起兼容性改成按 API 版本判断（VS 2026 仍提供 17.x API 线），判断时只看下界、
-      忽略上界，官方给新扩展的写法就是不写上界——所以这里跟着改成 [17.0,)，
-      一个包同时覆盖 VS 2022 与 VS 2026，以后也不用每个大版本回来改一次上界。
+      为什么两个都必须写：ProductArchitecture 在 VS 2022+ 是**必需且无默认值**的，
+      而且要参与「适用产品」匹配。开发机是 ARM64 的 VS 2026（18.9，装在
+      C:\Program Files\Microsoft Visual Studio\18\Community），清单里只有 amd64 时安装器报：
 
-      下界 17.0 保持不变的理由仍是 WebView2 Runtime：VS 2019 不保证装了，
-      VS 2022 及以后的安装程序都会带。
+          VSIXInstaller.NoApplicableSKUsException: 此扩展不能安装在任何当前安装的产品上
+
+      这个报错**一个字都不提架构**，只是在「找到的已安装产品」之后说不匹配，所以第一反应会去
+      怀疑版本区间——我先把 [17.0,18.0) 改成 [17.0,) 试了一轮，没用，才回头查架构。
+      以后再见到这个报错，先确认架构，别再从版本区间上找。
+
+      版本区间下界 17.0、不写上界：VS 2026 起按 API 版本判兼容、只看下界忽略上界，
+      官方给新扩展的模板就是不写上界，以后不用每个大版本回来改一次。
+      下界保住 17.0 的理由仍是 WebView2 Runtime：VS 2019 不保证装了，VS 2022 及以后都会带。
     -->
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,)">
       <ProductArchitecture>amd64</ProductArchitecture>
+    </InstallationTarget>
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,)">
+      <ProductArchitecture>arm64</ProductArchitecture>
     </InstallationTarget>
   </Installation>
 
