@@ -189,9 +189,15 @@ namespace RaccoonVS
                 // 每次 CoreWebView2 重建（窗口重开、VS 重启）都要重设映射，它是实例级的。
                 // 两参重载的默认访问级别是 DenyCors，这里显式写出来：同源的 module 加载
                 // 不受 CORS 影响（Vite 产物正是这种情况），要放开给外部 API 再改 Allow。
+                //
+                // 映射根必须是 dist/webviews（各 app 的**父目录**），不是 app 目录：
+                // 构建产物的 index.html 里引用的是 ../assets/xxx（Vite 相对路径指向
+                // 共享的 assets 目录）。根指到 app 目录的话，页面 URL 里的 /<app>/ 段
+                // 会先在文件系统里多叠一层——直接 ERR_FILE_NOT_FOUND，而 assets 引用
+                // 也解析不到父目录里去。页面 URL 见 Navigate。
                 core.SetVirtualHostNameToFolderMapping(
                     VirtualHost,
-                    ResolveAppDirectory(),
+                    ResolveWebviewsDirectory(),
                     CoreWebView2HostResourceAccessKind.DenyCors);
 
                 core.WebMessageReceived += OnWebMessageReceived;
@@ -310,9 +316,26 @@ namespace RaccoonVS
         /// </summary>
         private string ResolveAppDirectory()
         {
+            var directory = Path.Combine(ResolveWebviewsDirectory(), _app);
+
+            if (!Directory.Exists(directory))
+            {
+                throw new DirectoryNotFoundException(
+                    $"找不到 webview 产物：{directory}。请在项目根目录先跑 npm run build:webviews。");
+            }
+
+            return directory;
+        }
+
+        /// <summary>
+        /// 四个应用共享的前端根目录：dist/webviews。
+        /// 虚拟主机映射指到这里（理由见 OnLoaded 里 SetVirtualHostNameToFolderMapping 的注释）。
+        /// </summary>
+        private string ResolveWebviewsDirectory()
+        {
             var assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
                                     ?? AppDomain.CurrentDomain.BaseDirectory;
-            var directory = Path.Combine(assemblyDirectory, "dist", "webviews", _app);
+            var directory = Path.Combine(assemblyDirectory, "dist", "webviews");
 
             if (!Directory.Exists(directory))
             {
