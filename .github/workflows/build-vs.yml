@@ -131,11 +131,18 @@ jobs:
       #
       # 单开一个步骤且用 powershell（5.1，.NET Framework）而不是上面的 pwsh：
       # pwsh 跑在 .NET Core 上，载入 net48 程序集不保证成。
+      #
+      # 代价是这个步骤的 run 里**只能写 ASCII**，一个中文都不能有。
+      # 5.1 读脚本文件用的是系统 ANSI 代码页，而本文件是无 BOM 的 UTF-8：
+      # 中文会被逐字节读成高位乱码，乱码里若正好凑出引号就把字符串截断，
+      # 整段变成语法错误——第一步 push 就是这么挂的，报错还长成「字符串缺少终止符」，
+      # 看着像引号写错，其实是编码。解释所以写在 YAML 注释里（注释不进脚本），
+      # 脚本内的字符串一律英文。
       - name: Verify ctmenu resource in assembly
         shell: powershell
         run: |
           $dll = "src/visualstudio/RaccoonVS/bin/Release/net48/RaccoonVS.dll"
-          if (-not (Test-Path $dll)) { throw "找不到 $dll" }
+          if (-not (Test-Path $dll)) { throw "not found: $dll" }
           $asm = [Reflection.Assembly]::LoadFrom((Resolve-Path $dll).Path)
           $found = $false
           foreach ($name in $asm.GetManifestResourceNames()) {
@@ -146,8 +153,8 @@ jobs:
               $reader.Close()
             } catch { }
           }
-          if (-not $found) { throw "RaccoonVS.dll 里没有 Menus.ctmenu 资源，菜单表没合并进去——装上了也不会有菜单" }
-          Write-Host "菜单表已合并进 RaccoonVS.dll"
+          if (-not $found) { throw "RaccoonVS.dll does not embed Menus.ctmenu - the command table was not merged in, so the extension installs without any menu entry." }
+          Write-Host "ctmenu resource merged into RaccoonVS.dll"
 
       - name: Package VS Code extension
         run: npx @vscode/vsce package
