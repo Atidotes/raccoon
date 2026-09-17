@@ -61,6 +61,9 @@ jobs:
           # 版本号取 package.json 的 version 补一段，凑成 vsix 要求的四段式
           $version = (node -p "require('./package.json').version") + ".0"
           Write-Host "VsixVersion: $version"
+          # 传给下一步对账。下一个步骤是独立进程，变量不跨步骤，只能走 GITHUB_ENV
+          # （同 MSBUILD 那条，PowerShell 5.1 写 utf8 会带 BOM，GITHUB_ENV 解析不了）
+          "VSIX_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
           & $env:MSBUILD src/visualstudio/RaccoonVS.sln -restore -nologo `
               -p:Configuration=Release -p:VsixVersion=$version -p:DeployExtension=false
           if ($LASTEXITCODE -ne 0) { throw "VSIX 构建失败（退出码 $LASTEXITCODE）" }
@@ -84,6 +87,36 @@ jobs:
 
           if (-not ($entries | Where-Object { $_ -like "*WebView2Loader.dll" })) {
             throw "vsix 里没有 WebView2Loader.dll，WebView2 起不来"
+          }
+
+          # 清单版本号。打包时 csproj 的 StampVsixVersion 把 __VSIX_VERSION__ 换成上面那个
+          # 版本号——不换的话 vsix 装不上，报 InvalidExtensionManifestException「版本字符串
+          # 部分太短或太长」，而打包那一步是完全成功的，错误要等安装才炸。所以从打好的包里
+          # 读回来对一遍，算是端到端验证（csproj 里想断言但没法断言：MSBuild 的字符串函数要求
+          # 把内容拼进条件表达式，清单里有个单引号就会把条件解析搞崩）。
+          $manifestDir = Join-Path $env:RUNNER_TEMP "vsix-manifest"
+          New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
+          & tar -xf $vsix.FullName -C $manifestDir extension.vsixmanifest
+          if ($LASTEXITCODE -ne 0) { throw "从 vsix 里解不出 extension.vsixmanifest" }
+
+          $manifest = Get-Content (Join-Path $manifestDir "extension.vsixmanifest") -Raw
+          if ($manifest -match "__VSIX_VERSION__") {
+            throw "包内清单还留着 __VSIX_VERSION__ 占位符，替版本号那步没生效"
+          }
+          # 包内的清单会被 XML 重新序列化（Identity 挤成一行、设计期属性剥掉），
+          # 但属性顺序不变，Version 仍在 Id 之后
+          $m = [regex]::Match($manifest, '<Identity[^>]*?\sVersion="([^"]+)"')
+          if (-not $m.Success) { throw "包内清单里找不到 Identity/@Version" }
+          if ($m.Groups[1].Value -ne $env:VSIX_VERSION) {
+            throw "版本号不符：包内是 $($m.Groups[1].Value)，期望 $env:VSIX_VERSION"
+          }
+          Write-Host "包内清单版本号：$($m.Groups[1].Value)"
+
+          # Asset 的 Path 是 |%CurrentProject%;PkgdefProjectOutputGroup|，靠 Detokenize 解析成
+          # pkgdef 文件名。解析不出来扩展装上了也加载不了，而清单本身语法完全合法，一样是
+          # 「打包成功、装载才炸」那一类
+          if ($manifest -notmatch "RaccoonVS\.pkgdef") {
+            throw "包内清单的 Asset 没解析出 RaccoonVS.pkgdef"
           }
 
           Write-Host "自检通过，共 $($entries.Count) 个条目"

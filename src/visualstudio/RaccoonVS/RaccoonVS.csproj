@@ -117,6 +117,80 @@
   </ItemGroup>
 
   <!--
+    把 vsixmanifest 里的 __VSIX_VERSION__ 换成真实版本号。
+
+    为什么必须自己换：MSBuild 不替换文件内容里的 $(...)。清单是磁盘上的普通文件，
+    VSSDK 的 DetokenizeVsixManifestFile 只解析 |工程输出| 那类 token，不管 MSBuild 属性。
+    不换的话 vsix 里 Identity/@Version 就是字面量，装载时报
+    InvalidExtensionManifestException「版本字符串部分太短或太长」——打包阶段完全成功，
+    错误要等安装才炸，很费一轮。
+
+    做法：读原件 → 替换 → 写到 obj 下的副本 → 把 SourceVsixManifest 指向副本。
+    仓库里的原件保持占位符，构建不改工作区。
+    排在 DetokenizeVsixManifestFile 之前，因为后者会读 @(SourceVsixManifest)。
+
+    两个必须显式写 Encoding 的地方：清单文件没有 BOM（见文件头第一行），
+    ReadLinesFromFile/WriteLinesToFile 不指定就按系统默认编码走，
+    在 Windows 上会把 <Description> 里的中文读成乱码再写回去。
+  -->
+  <Target Name="StampVsixVersion"
+          BeforeTargets="DetokenizeVsixManifestFile"
+          DependsOnTargets="FindSourceVsixManifest">
+    <!-- ReadLinesFromFile 没有 Encoding 参数；它内部用 File.OpenText，
+         即 UTF-8 + BOM 探测，读这份无 BOM 的 UTF-8 清单是对的 -->
+    <ReadLinesFromFile File="@(SourceVsixManifest)">
+      <Output TaskParameter="Lines" ItemName="_ManifestLine" />
+    </ReadLinesFromFile>
+
+    <ItemGroup>
+      <_ManifestLine>
+        <Stamped>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '__VSIX_VERSION__', '$(VsixVersion)'))</Stamped>
+      </_ManifestLine>
+      <_StampedManifest Include="$(IntermediateOutputPath)source.extension.stamped.vsixmanifest" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="@(_StampedManifest)"
+                      Lines="@(_ManifestLine->'%(Stamped)')"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+
+    <!--
+      删掉上一轮的中间清单，别省这一步——这是个上游 bug 的绕法，不是洁癖。
+
+      DetokenizeVsixManifestSource 的写入判断写反了。反编译
+      Microsoft.VisualStudio.Sdk.BuildTasks.dll（17.14.2142）里 Execute() 的结尾：
+
+          if (File.Exists(out)) old = ReadAllText(out);
+          if (string.IsNullOrEmpty(old) || new.Length != old.Length || string.Equals(new, old))
+              WriteAllText(out, new);
+
+      第三个条件本该是「不相等」，写成相等之后，整体就成了「只有长度不同、或内容一模一样才写」。
+      于是**内容变了但长度没变**时它直接跳过：版本号 0.1.0.0 → 0.2.0.0 正是等长的，
+      中间清单会一直停在上一轮的版本号，而打包打的正是这个中间清单——
+      现象是本地改个版本号重新打包，装进 VS 的还是旧版本。
+
+      只坑本地增量构建：CI 每次都是干净目录，输出文件不存在，第一个条件就为真。
+      所以这个 bug 在 CI 上永远看不见，别指望它帮你守着。
+
+      删掉之后 File.Exists 为假，任务必然重写。代价是每次构建都重新生成中间清单，
+      下游 CreateVsixContainer 也就每次都真打一遍包——拿这点时间换「版本号不会悄悄变旧」，值。
+    -->
+    <Delete Files="$(IntermediateVsixManifest)" />
+
+    <!--
+      这里本来想加一条「替没替成功」的断言，但没加：MSBuild 的字符串函数要求把内容
+      拼进条件表达式，清单里只要出现一个单引号就会把条件解析搞崩。
+      这件事交给 CI 做——解开 vsix 读 extension.vsixmanifest，那是端到端的验证，
+      而且是在 PowerShell 里，没有转义问题（见 build-vs.yml 的 Verify VSIX contents）。
+    -->
+    <ItemGroup>
+      <SourceVsixManifest Remove="@(SourceVsixManifest)" />
+      <SourceVsixManifest Include="@(_StampedManifest)" />
+      <FileWrites Include="@(_StampedManifest)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     四个 webview 各要有 index.html，缺一个就说明 npm run compile 没跑（或只跑了一半）。
     漏掉时上面那条 Include 匹配到空集，打包照样成功，装进 VS 才发现面板是白的，
     查起来要绕一大圈。这里在打包前直接拦住。

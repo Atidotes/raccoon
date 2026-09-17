@@ -3,8 +3,17 @@
                 xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"
                 xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
+    <!--
+      Version 是个自定义占位符，由 csproj 里的 StampVsixVersion 目标在打包前替换成
+      $(VsixVersion)（CI 传的是 package.json 的版本补一段）。
+
+      不能写 $(VsixVersion)：MSBuild 只替换「工程文件里」的属性，清单是磁盘上的一个普通
+      文件，它不认识 $(...)。而 VSSDK 的 DetokenizeVsixManifestFile 只解析 |工程输出|
+      那类 token，也不碰 MSBuild 属性。写属性名的后果是原样打进 vsix，
+      装载时报「版本字符串部分太短或太长」——而打包那一步是完全成功的，错误要等安装才炸。
+    -->
     <Identity Id="Raccoon.VisualStudio"
-              Version="$(VsixVersion)"
+              Version="__VSIX_VERSION__"
               Language="zh-CN"
               Publisher="Atidotes" />
     <DisplayName>Raccoon</DisplayName>
