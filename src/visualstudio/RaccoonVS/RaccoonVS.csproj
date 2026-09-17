@@ -62,41 +62,72 @@
     </None>
     <!--
       仓库根目录的 LICENSE 没有扩展名，而 vsixmanifest 的 <License> 要求扩展名来判定格式。
-      这里改名为 LICENSE.txt 打进 vsix，安装时会显示在扩展详情页。
+      这里改名成 LICENSE.txt 打进 vsix，安装时会显示在扩展详情页。
+
+      必须是 Content，不能写成 None：VSSDK 收集 vsix 条目时只扫 @(Content)
+      （Microsoft.VsSDK.targets 的 GetVsixSourceItems 里那段 Include="@(Content)"），
+      @(None) 一个都不收。写成 None 的后果是 VsixUtil 校清单时报 VSSDK1310——
+      「清单里声明了 LICENSE.txt，可文件列表里没有」，措辞很像是路径写错，
+      实际是条目类型不对。旁边 source.extension.vsixmanifest 同样是 None 却没事，
+      因为 FindSourceVsixManifest 显式读的是 @(None)，那属于特例，别照着推。
+
+      Link 决定归档目录：VSIXSubPath 取的是 Path.GetDirectoryName(Link)，只给文件名就是空串，
+      正好落在 vsix 根。但 Link **不决定归档文件名**——名字是从源文件路径取的。
+      源文件在仓库根叫 LICENSE（没有扩展名），不打 TargetPath 的话归档里就叫 LICENSE，
+      与清单声明的 LICENSE.txt 仍然对不上，照样报 VSSDK1310。
+      （AssignTargetPaths 不会替 Content 补 TargetPath，跑过一遍确认了。）
     -->
-    <None Include="..\..\LICENSE">
+    <Content Include="..\..\..\LICENSE">
       <Link>LICENSE.txt</Link>
+      <TargetPath>LICENSE.txt</TargetPath>
       <IncludeInVSIX>true</IncludeInVSIX>
-    </None>
-  </ItemGroup>
-
-  <!--
-    WebView2 的 native loader 显式打进 vsix。
-
-    Microsoft.Web.WebView2 是按 RID 约定布局的（runtimes/win-x64/native/），VSSDK 的
-    默认收集不一定会把 RID 资产算进来。缺了它的后果是安装后一开面板就报 WebView2
-    初始化失败——CI 里那条「解开 vsix 找 WebView2Loader.dll」的自检就是盯这个的。
-    路径由 NuGet 解析后写进 PkgWebView2NativePath，所以升级包版本时这里不用跟着改。
-  -->
-  <ItemGroup Condition="'$(PkgWebView2NativePath)' != ''">
-    <Content Include="$(PkgWebView2NativePath)">
-      <Link>runtimes\win-x64\native\WebView2Loader.dll</Link>
-      <IncludeInVSIX>true</IncludeInVSIX>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
   <!--
+    WebView2 的 native loader（runtimes\win-*\native\WebView2Loader.dll）由包自己进 vsix，
+    这里不要再手写一条。
+
+    Microsoft.Web.WebView2 的 build\Common.targets 会按架构加三条 Content，自带
+    Link 和 IncludeInVsix=true——正是 VSSDK 收条目时认的形状（它只扫 @(Content)，
+    且元数据名大小写不敏感，所以包里的 IncludeInVsix 与这里惯写的 IncludeInVSIX 等价）。
+
+    这里原先手写过一条 Content 试图「显式打进」，条件用的是 $(PkgWebView2NativePath)，
+    而这个属性并不存在（NuGet 的属性名是把包名里的点换成下划线，即
+    $(PkgMicrosoft_Web_WebView2)）——条件恒假，条目从未生成。就算条件成立也只是
+    和包自带的那条撞成重复条目。CI 里「解开 vsix 找 WebView2Loader.dll」那条自检保留，
+    用来兜住包行为变化。
+  -->
+
+  <!--
     前端产物。Link 决定它在 vsix 里的落点：dist/webviews/<app>/index.html。
     运行时用 Assembly.Location 拼同一路径（见 WebViewHost.ResolveAppDirectory）。
+
+    数清层级：本工程在 src/visualstudio/RaccoonVS/，回仓库根要三级（..\..\..\），
+    dist 和 LICENSE 都放在根上。少写一级会解析到 src/dist —— 那个目录并不存在，
+    而 Include 落空既不报错也不警告，结果是安静地打出一个没有前端的 vsix。
+    下面的 EnsureWebviewAssets 就是专门把这种情况变成显式报错的。
   -->
   <ItemGroup>
-    <Content Include="..\..\dist\webviews\**\*">
+    <Content Include="..\..\..\dist\webviews\**\*">
       <Link>dist\webviews\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!--
+    四个 webview 各要有 index.html，缺一个就说明 npm run compile 没跑（或只跑了一半）。
+    漏掉时上面那条 Include 匹配到空集，打包照样成功，装进 VS 才发现面板是白的，
+    查起来要绕一大圈。这里在打包前直接拦住。
+  -->
+  <Target Name="EnsureWebviewAssets" BeforeTargets="CreateVsixContainer">
+    <ItemGroup>
+      <_WebviewApp Include="tetris;snake;gomoku;ssh" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\..\..\dist\webviews\%(_WebviewApp.Identity)\index.html')"
+           Text="缺少前端产物 dist/webviews/%(_WebviewApp.Identity)/index.html。先在仓库根跑 npm run compile，再打包。" />
+  </Target>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 
