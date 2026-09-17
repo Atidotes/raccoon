@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+src/**
+resources/**/*.map
+.gitignore
+**/tsconfig*.json
+**/*.map
+node_modules/**
+*.vsix
+vite.config.mts
+vitest.config.mts
+tests/**
+# 插件自己导出 PDF 的产物，别打进扩展包
+*.pdf
