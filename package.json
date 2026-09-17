@@ -5,6 +5,10 @@
     "version": "0.1.0",
     "publisher": "Atidotes",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Atidotes/raccoon.git"
+    },
     "icon": "resources/raccoon.png",
     "engines": {
         "vscode": "^1.75.0"
@@ -13,9 +17,7 @@
         "onStartupFinished"
     ],
     "categories": [
-        "Other",
-        "Games",
-        "Productivity"
+        "Other"
     ],
     "keywords": [
         "raccoon",
@@ -132,7 +134,7 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true});require('fs').rmSync('dist',{recursive:true,force:true})\"",
-        "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository"
+        "package": "npm run compile && npx @vscode/vsce package"
     },
     "devDependencies": {
         "@types/node": "^24.13.5",

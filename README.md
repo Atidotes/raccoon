@@ -243,7 +243,7 @@ npm run watch:types   # 只监听宿主类型检查
 npm run package       # 产出 raccoon-0.1.0.vsix
 ```
 
-打包脚本带了 `--allow-missing-repository`：项目还没有远程仓库，`package.json` 里暂时没有 `repository` 字段。发布到市场前把它补上，这个 flag 就可以去掉了。
+`package.json` 的 `repository` 已填成真实地址，`vsce` 不再提示需要 `--allow-missing-repository`。换仓库地址时这里要同步。
 
 ## 已知约束
 
@@ -264,4 +264,14 @@ npm run package       # 产出 raccoon-0.1.0.vsix
 
 ## 发布前
 
-`package.json` 里的 `publisher` 还是占位值，记得改成你自己的；`name` / `displayName` 已定为 `raccoon` / `Raccoon`。`repository` 字段也还没填——补上真实仓库地址后，打包脚本里的 `--allow-missing-repository` 可以去掉，本文件的表格也可以换回相对路径的 Markdown 链接。
+`package.json` 里的 `publisher` 还是占位值，记得改成你自己的；`name` / `displayName` 已定为 `raccoon` / `Raccoon`，`repository` 已填。本文件的表格用的是代码路径而不是 Markdown 链接，仓库公开后可以换回相对路径链接。
+
+**`categories` 只能是 VS Code 内置的这 20 个值**（源码里是 `ExtensionCategory` 的枚举，`toLowerCase` 比较，所以大小写无所谓，但值本身不存在就是不认）：
+
+```
+AI  Azure  Chat  Data Science  Debuggers  Education  Extension Packs  Formatters
+Keymaps  Language Packs  Linters  Machine Learning  Notebooks  Other
+Programming Languages  SCM Providers  Snippets  Testing  Themes  Visualization
+```
+
+**没有 `Games`，也没有 `Productivity`** —— 写这两个值 IDE 会报 `Value is not accepted. Valid values: ...`，`vsce package` 不报错但市场上也不会认。游戏类和办公类的插件在市场上都归在 `Other` 下，搜索曝光靠的是自由文本的 `keywords`（本项目的 `games` / `游戏` / `productivity` / `办公` / `摸鱼` 已经覆盖）。所以这里最终只留了 `["Other"]`。
