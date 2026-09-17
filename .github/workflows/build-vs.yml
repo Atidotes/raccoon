@@ -121,6 +121,34 @@ jobs:
 
           Write-Host "自检通过，共 $($entries.Count) 个条目"
 
+      # 菜单表必须真的在程序集里，否则「工具」菜单下不会出现任何入口。
+      #
+      # VSCTCompile 产出的 .cto 由外部工具 VsixUtil.exe mergeCto 作为一条名为 Menus.ctmenu
+      # 的内嵌资源写进 RaccoonVS.dll（见 CtoMerger：ResourceWriter.AddResource(ctoFile.ResourceName,
+      # bytes)，ResourceName 来自 csproj 的 <VSCTCompile><ResourceName>）。这条链断掉时的症状
+      # 具有极强的误导性：打包成功、vsix 能装、管理扩展里列得出来、pkgdef 和清单也都正常——
+      # 只是 VS 里一个入口都没有，看起来像 VS 的问题。
+      #
+      # 单开一个步骤且用 powershell（5.1，.NET Framework）而不是上面的 pwsh：
+      # pwsh 跑在 .NET Core 上，载入 net48 程序集不保证成。
+      - name: Verify ctmenu resource in assembly
+        shell: powershell
+        run: |
+          $dll = "src/visualstudio/RaccoonVS/bin/Release/net48/RaccoonVS.dll"
+          if (-not (Test-Path $dll)) { throw "找不到 $dll" }
+          $asm = [Reflection.Assembly]::LoadFrom((Resolve-Path $dll).Path)
+          $found = $false
+          foreach ($name in $asm.GetManifestResourceNames()) {
+            $stream = $asm.GetManifestResourceStream($name)
+            try {
+              $reader = New-Object System.Resources.ResourceReader $stream
+              foreach ($entry in $reader) { if ($entry.Key -eq "Menus.ctmenu") { $found = $true } }
+              $reader.Close()
+            } catch { }
+          }
+          if (-not $found) { throw "RaccoonVS.dll 里没有 Menus.ctmenu 资源，菜单表没合并进去——装上了也不会有菜单" }
+          Write-Host "菜单表已合并进 RaccoonVS.dll"
+
       - name: Package VS Code extension
         run: npx @vscode/vsce package
 
