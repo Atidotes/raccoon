@@ -26,10 +26,21 @@
   <Installation>
     <!--
       Community 这个 Id 覆盖全部 SKU（Pro / Enterprise 安装时会按 Community 报兼容）。
-      ProductArchitecture 必须是 amd64：VS 2022 是纯 64 位进程。
-      限定 [17.0,18.0)：VS 2019 不保证带 WebView2 Runtime，VS 2022 安装程序强制预装。
+      ProductArchitecture 必须是 amd64：VS 2022 起是纯 64 位进程。
+
+      下界 17.0、**不写上界**。原来的写法是 [17.0,18.0)，结果在 VS 2026 上装不上：
+      VSIXInstaller 报 NoApplicableSKUsException「此扩展不能安装在任何当前安装的产品上」，
+      日志里能看到它找到了「Visual Studio Community 2026」却判为不匹配。
+       VS 2026 是 18.x，被 18.0 这个上界挡在外面。
+
+      VS 2026 起兼容性改成按 API 版本判断（VS 2026 仍提供 17.x API 线），判断时只看下界、
+      忽略上界，官方给新扩展的写法就是不写上界——所以这里跟着改成 [17.0,)，
+      一个包同时覆盖 VS 2022 与 VS 2026，以后也不用每个大版本回来改一次上界。
+
+      下界 17.0 保持不变的理由仍是 WebView2 Runtime：VS 2019 不保证装了，
+      VS 2022 及以后的安装程序都会带。
     -->
-    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,18.0)">
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,)">
       <ProductArchitecture>amd64</ProductArchitecture>
     </InstallationTarget>
   </Installation>
@@ -39,8 +50,12 @@
   </Dependencies>
 
   <Prerequisites>
+    <!--
+      同样只留下界：这个组件是 VS 核心编辑器，任何 SKU 都必装，写上界除了制造一次
+      「VS 2026 装不上」之外没有任何作用（依赖检查同样会被 18.0 的上界挡住）。
+    -->
     <Prerequisite Id="Microsoft.VisualStudio.Component.CoreEditor"
-                 Version="[17.0,18.0)"
+                 Version="[17.0,)"
                  DisplayName="Visual Studio 核心编辑器" />
   </Prerequisites>
 
