@@ -4,6 +4,7 @@ import { DeepSeekBalanceStatusBar } from './deepseek/statusBar';
 import { startGomoku } from './gomoku/startGomoku';
 import { startSnake } from './snake/startSnake';
 import { startGame } from './tetris/startGame';
+import { startSsh } from './ssh/startSsh';
 import { RaccoonTreeDataProvider } from './raccoonTreeDataProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -27,7 +28,8 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('raccoon.refreshBalance', () => balanceStatusBar.refresh()),
         vscode.commands.registerCommand('raccoon.startTetris', () => startGame(context)),
         vscode.commands.registerCommand('raccoon.startGomoku', () => startGomoku(context)),
-        vscode.commands.registerCommand('raccoon.startSnake', () => startSnake(context))
+        vscode.commands.registerCommand('raccoon.startSnake', () => startSnake(context)),
+        vscode.commands.registerCommand('raccoon.ssh', () => startSsh(context))
     );
 }
 

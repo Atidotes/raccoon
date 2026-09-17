@@ -50,6 +50,13 @@ const FEATURES: Feature[] = [
         tooltip: '在编辑器旁边开一局复古 CRT 风格的贪吃蛇，方向键转向',
         icon: 'snake',
         command: 'raccoon.startSnake'
+    },
+    {
+        label: 'SSH 连接',
+        description: '远程服务器',
+        tooltip: '在编辑器区域打开 SSH 面板，管理服务器并开内嵌终端',
+        icon: 'remote-explorer',
+        command: 'raccoon.ssh'
     }
 ];
 

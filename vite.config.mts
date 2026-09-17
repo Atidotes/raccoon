@@ -2,10 +2,10 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
 /**
- * 三个游戏 webview 的多入口构建（只 build，不用 dev server）。
+ * 各 webview 的多入口构建（只 build，不用 dev server）。
  *
  * root 指到 src/webviews：Vite 8 按输入文件相对 root 的解析路径生成
- * HTML 输出位置，这样才能落在 dist/webviews/<game>/index.html。
+ * HTML 输出位置，这样才能落在 dist/webviews/<app>/index.html。
  */
 export default defineConfig({
     root: 'src/webviews',
@@ -25,7 +25,8 @@ export default defineConfig({
             input: {
                 tetris: 'tetris/index.html',
                 gomoku: 'gomoku/index.html',
-                snake: 'snake/index.html'
+                snake: 'snake/index.html',
+                ssh: 'ssh/index.html'
             }
         }
     }

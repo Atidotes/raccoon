@@ -1,9 +1,10 @@
 # Raccoon
 
-一只住在 VS Code 里的浣熊，喜欢翻代码垃圾桶，把游戏、办公和小工具都叼回来给你。目前五个功能：
+一只住在 VS Code 里的浣熊，喜欢翻代码垃圾桶，把游戏、办公和小工具都叼回来给你。目前六个功能：
 
 - **Markdown 导出 PDF** —— 纯 JS 实现，不需要本机 Python 环境
 - **DeepSeek 余额** —— 在状态栏实时显示账户余额
+- **SSH 连接** —— 在编辑器区域管理服务器，开多标签内嵌终端
 - **俄罗斯方块** —— 在编辑器旁边开一局复古 CRT 风格的游戏
 - **五子棋** —— 人机对战，三种难度
 - **贪吃蛇** —— 复古 CRT 风格，越吃越快
@@ -85,6 +86,51 @@ Markdown --marked--> HTML --headless Chrome--> PDF
 | `💳 ¥0.00`（黄底） | `is_available` 为 false，后续 API 调用会被拒绝 |
 | `⚠ 获取失败`（黄底） | 网络错误、Key 无效等，悬停看具体原因，点击重试 |
 | `💳 未配置` | 还没填 Key，点击打开设置 |
+
+## SSH 连接
+
+侧边栏点「SSH 连接」（或命令面板搜 `Raccoon: SSH 连接`），在编辑器区域打开面板：打开后默认是服务器列表主页，点任意一台整页切换成全屏终端。终端是 xterm.js，连接由扩展宿主里的 ssh2 建立——不占用 VS Code 自带终端，也不需要本机装 `ssh` 命令。
+
+### 用法
+
+1. 主页点「+ 新增服务器」，填名称（只给你自己看的标签）、主机、端口、用户名和认证方式
+2. 表单底部左侧的「测试连接」可以先用当前填写的内容（含还没保存的密码）试连一次，通了再保存——测试只验证握手和登录，不开终端
+3. 点任意一张服务器卡片即连接，整个页面切换到全屏终端；一台服务器对应一个标签，主页卡片上的状态点显示它当前是连接中 / 已连接 / 已断开
+4. 终端页左上角的 `←` 返回服务器列表，**连接保持不断**；主页顶部的「回到终端」或再点同一台机器，都会切回原来的终端而不是重开一条
+5. 终端页顶部是多标签：可以同时连着好几台机器来回切
+6. 连接失败时终端上方会出现一条红色横幅写清原因；关掉标签或关掉整个面板，对应的连接会一起断掉，不留后台会话
+
+主机地址支持域名、IPv4 和 IPv6。IPv6 用 `[::1]` 这种带方括号的写法更不容易看错，代码里会在连接前把方括号去掉。
+
+### 认证方式
+
+| 方式 | 怎么填 | 密钥存哪 |
+| --- | --- | --- |
+| 密码 | 填登录密码 | 系统钥匙串 |
+| 私钥文件 | 填私钥**路径**（如 `~/.ssh/id_ed25519`）+ 有的话填 passphrase | passphrase 进系统钥匙串，私钥本身不复制不保存 |
+| ssh-agent | 一般不用填，默认读环境变量 `SSH_AUTH_SOCK`（Windows 是命名管道 `\\.\pipe\openssh-ssh-agent`） | 不涉及 |
+
+从 Dock / 启动台启动的 VS Code 有可能读不到 `SSH_AUTH_SOCK`（拿不到登录 shell 的环境变量）。这种情况在服务器配置里手动填上 agent socket 路径即可，macOS 上一般是 `/private/tmp/com.apple.launchd.XXXX/Listeners`。
+
+### 密码存在哪
+
+服务器清单（名称 / 主机 / 端口 / 用户名）存的是 VS Code 的 **globalState**，跨项目共用一份；密码和私钥 passphrase 存 **SecretStorage**，在 macOS 上是钥匙串、Windows 上是凭据管理器、Linux 上是 libsecret。
+
+两者都不写进工作区的 `.vscode/settings.json`。这是刻意的：工作区设置通常会跟着 git 走，一份带主机名和用户名的服务器清单跟着仓库推到远端，等于白送一张内网地图。密码则更进一步，连 globalState 那个明文 JSON 文件都不落。
+
+表单里的密码框**永远不会回显已存的密码**——宿主根本不把明文发给网页那侧，只发一个「存过没有」的标记。所以编辑服务器时密码框留空 = 不修改，填了才覆盖。想彻底清掉某个密码，把这条记录删掉重加。
+
+### 主机指纹
+
+ssh2 默认**完全不校验主机密钥**，链路被劫持时攻击者用自己的密钥照样能握手成功。插件补了一道 TOFU（首次连接即信任）：第一次连某台机器时记下它主机密钥的 SHA256 指纹（`SHA256:...`，和 `ssh-keygen -lf` 的输出格式一致，可以直接和运维给的指纹对照），之后每次连接都必须一致，不一致就断开并提示可能存在中间人攻击。
+
+指纹按 `主机:端口` 存。挡不住「第一次连的时候就已经被劫持」——这是 TOFU 的固有边界——但之后任何一次密钥替换都会被发现。如果那台机器确实重装过系统或换了密钥，把这条服务器记录删掉重加就会重新信任。
+
+### 已知限制
+
+- **不支持 keyboard-interactive（PAM / 二次验证）。** 只走密码、公钥、agent 三种认证。开了 2FA 的机器连不上。
+- **不做端口转发、SFTP、会话录制。** 就是个终端。
+- **只有一套指纹库，不读 `~/.ssh/known_hosts`。** 用系统 `ssh` 连过并记下的指纹，这里不认识，第一次连仍然算「首次信任」。
 
 ## 俄罗斯方块
 
@@ -192,6 +238,12 @@ Markdown --marked--> HTML --headless Chrome--> PDF
 | `src/commands/exportPdf.ts` | 「导出为 PDF」命令：定位文件、解析输出路径、进度提示 |
 | `src/deepseek/balance.ts` | 余额接口客户端：HTTP 请求、响应解析、金额格式化 |
 | `src/deepseek/statusBar.ts` | 状态栏项：各状态渲染、定时刷新、配置变更响应 |
+| `src/ssh/servers.ts` | 服务器清单读写：非敏感字段进 globalState，密码 / passphrase 进 SecretStorage |
+| `src/ssh/sessionManager.ts` | ssh2 会话池：建连、申请 pty、双向搬字节、把英文报错翻成中文 |
+| `src/ssh/knownHosts.ts` | TOFU 主机指纹：首次记下 SHA256，之后再连必须一致，否则拒绝 |
+| `src/ssh/validate.ts` | 主机 / 端口 / 表单校验的纯函数。宿主侧才是权威，webview 传来的值一律不可信 |
+| `src/ssh/terminalPanel.ts` | SSH 面板：单例、消息路由；`startSsh.ts` 是命令入口的薄封装 |
+| `src/webviews/ssh/` | SSH 网页（Vue 3 + TS）：`xterm.ts` 建终端、`components/` 管标签与表单、`logic/sessions.ts` 是纯标签状态机 |
 | `src/vscode/webviewPanel.ts` | 宿主侧 webview 加载：读 `dist` 产物、资源 URI 改写、CSP 注入 |
 | `src/vscode/gamePanel.ts` | 游戏面板工厂：单例管理、最高分读写、消息协议处理，三个游戏共用 |
 | `src/shared/protocol.ts` | webview ↔ 宿主消息协议（类型 + 消息名常量），两端共用——跨进程只能共享类型和纯常量 |
@@ -200,9 +252,9 @@ Markdown --marked--> HTML --headless Chrome--> PDF
 | `src/snake/startSnake.ts` | 贪吃蛇入口：调面板工厂，只留通知文案 |
 | `src/webviews/<game>/` | 各游戏网页（Vue 3 + TS）：`App.vue` 管流转、`components/` 管 Canvas 渲染、`logic/` 是纯逻辑引擎 |
 | `src/webviews/shared/` | 网页侧共用：`Cabinet.vue`（CRT 机箱外壳）、`vscode.ts`（`acquireVsCodeApi` 封装，引用共享协议） |
-| `tests/` | vitest 单元测试：三个游戏引擎 + DeepSeek / Markdown 纯函数 |
+| `tests/` | vitest 单元测试：三个游戏引擎 + DeepSeek / Markdown / SSH 纯函数 |
 | `src/raccoonTreeDataProvider.ts` | 侧边栏功能入口列表，点击执行对应命令 |
-| `vite.config.mts` | 三个游戏 webview 的多入口构建（`root: src/webviews` → `dist/webviews/<game>/`） |
+| `vite.config.mts` | 三个游戏 + SSH 四个 webview 的多入口构建（`root: src/webviews` → `dist/webviews/<app>/`） |
 | `resources/raccoon.png` | 商店图标（256×256 PNG） |
 | `resources/raccoon.svg` | 活动栏图标（24×24 单色，随主题着色） |
 | `.vscode/launch.json` | F5 调试配置，`preLaunchTask` 指向 `build` |
@@ -216,14 +268,14 @@ npm run compile       # 类型检查（宿主 + 网页 + 测试三份配置）+ 
 npm run check-types   # 只做类型检查
 npm run test          # 跑一遍全部 vitest 单元测试
 npm run test:watch    # 测试常驻监听
-npm run watch         # 宿主 + 三个游戏网页的双 watcher（concurrently）
+npm run watch         # 宿主 + 网页的双 watcher（concurrently）
 npm run watch:types   # 只监听宿主类型检查
 ```
 
 两条构建链各司其职：
 
-- **宿主侧**：esbuild 把 `src/` 打成单文件 `out/extension.js`（外部依赖 `marked` 等一并打进 bundle，不进 VSIX 的 `node_modules`）。
-- **网页侧**：Vite 把 `src/webviews/` 下三个游戏（Vue 3 + TS）以多入口打成 `dist/webviews/<game>/`。面板打开时由 `src/vscode/webviewPanel.ts` 读取产物、把资源路径改写成 `asWebviewUri` 并在 `<head>` 顶部注入 CSP（不含 `unsafe-inline`）。
+- **宿主侧**：esbuild 把 `src/` 打成单文件 `out/extension.js`（`marked` 这类纯 JS 依赖一并打进 bundle，不进 VSIX 的 `node_modules`）。`ssh2` 是唯一的例外，走 `--external` 保留成 `require('ssh2')`，运行时从 `node_modules` 加载。
+- **网页侧**：Vite 把 `src/webviews/` 下的应用（Vue 3 + TS）以多入口打成 `dist/webviews/<app>/`。面板打开时由 `src/vscode/webviewPanel.ts` 读取产物、把资源路径改写成 `asWebviewUri` 并在 `<head>` 顶部注入 CSP。
 
 `tsc` / `vue-tsc` 只做类型检查（`--noEmit`），宿主、网页、测试各有一份 tsconfig，互不包含。
 
@@ -258,6 +310,11 @@ npm run package       # 产出 raccoon-0.1.0.vsix
 - **别在 problemMatcher 里写 `$esbuild-watch`。** 它不是 VS Code 内置的（由 esbuild 的 VS Code 扩展提供），本地没装那个扩展时会报「未定义的 problem matcher」导致 F5 失败。
 - **`npm run watch` 里的 esbuild watcher 在 stdin 关闭时会自动退出**，打印 `[watch] stopped automatically because stdin was closed`。正常终端里没事，但用 `&` 丢后台或重定向了 stdin 时会静默失效——看起来在跑，其实没监听。这种情况改用 `watch:host` 并加 `-- --watch=forever`。
 - **网页侧模板禁止内联脚本/样式。** webview 的 CSP 已经收紧到不含 `unsafe-inline`：`<script>` 内容、`style=""` 属性都会被浏览器拦掉（白屏）。样式一律写进组件 `<style>` 块（Vite 会抽成外部 CSS 文件）；需要动态样式时用 CSS 变量或 class 切换。`src/webviews/shared/Cabinet.vue` 的插槽样式用 `:slotted()`，游戏专属样式留在各自组件里。
+- **CSP 放宽只对 SSH 面板，别顺手扩大到别的应用。** xterm.js 的 DOM 渲染器要往 `<head>` 里插 `<style>` 元素（字符测量、尺寸样式），所以 `style-src` 对它单独放开了 `'unsafe-inline'`。这份名单在 `src/vscode/webviewPanel.ts` 的 `INLINE_STYLES_APPS` 里按应用名列出。`script-src` 对所有应用仍然没有 `unsafe-inline`，`default-src 'none'` 也照样挡死所有出站请求——放开的只是「页面内联样式」，不是「能执行任意脚本」。
+- **`.vscodeignore` 不是 gitignore 语义，而 `ssh2` 的打包全靠它。** 宿主构建里 ssh2 是 `--external:ssh2`，运行时从 `node_modules` 加载，所以包里必须有它。vsce 按 `package.json` 的 `dependencies` 自动收整棵生产依赖树（`ssh2` / `asn1` / `safer-buffer` / `bcrypt-pbkdf` / `tweetnacl`；`cpu-features` 和 `nan` 是 `optionalDependencies`，不会被带上），**但收完还要拿 `.vscodeignore` 过滤一遍**，而那个过滤是 vsce 自己实现的：非 `!` 开头的是 ignore，`!` 开头的是 negate，命中 negate 就保留，**没有 gitignore 那条「父目录被排除就不能再放回子文件」的规则**。
+    - 踩过的坑：本文件里写着 `node_modules/**`，再配上几条 `!node_modules/<依赖>/**` 白名单才收得回来。曾经因为误判成 gitignore 语义、以为白名单无效而把它删掉，结果打出来的 vsix 里 `node_modules` 是空的（23 个文件 / 213KB），装上后一开 SSH 面板就是 `Cannot find module 'ssh2'`。**改 `.vscodeignore` 之后务必 `unzip -l` 数一下包里的 `node_modules`**，别只看「打包成功」。
+    - 同理，在同一份 negate 底下没法再排掉子目录，所以 ssh2 是按 `lib/**/*.js`、`util/**`、`package.json` 三条正面列出来的——顺带把 node-gyp 编出来的 `build/`（830KB 中间产物和一个 ABI 不对的 `.node`）和 `test/`、`examples/`（620KB）挡在包外。`.vscodeignore` 里有详细注释。
+- **没有原生加密加速，走的是纯 JS 实现。** ssh2 的 install 脚本会在构建机上编一个 `sshcrypto.node`，那个二进制是按构建机的 Node ABI 编的，在 Electron 里 `require` 必然失败。这段 require 被 ssh2 自己用空 `try/catch` 包着（`lib/protocol/crypto.js`），失败后静默回退到纯 JS 加密，**功能完全一样，只是握手和吞吐慢一些**。那个 `.node` 和 `cpu-features` 都没打进包（见上一条），所以这条回退路径在本地和用户机器上都是必走的。
 - **活动栏图标是 CSS mask，不是图片。** 这块查证过 VS Code 1.138 的实现：`toCompositeBarActionItem` 对扩展贡献的 SVG 图标生成 `mask: url(图标) no-repeat 50% 50%; mask-size: var(--activity-bar-icon-size, 24px)`，再用 `label.style.backgroundColor = <主题色>` 上色。也就是说**形状只取 SVG 的 alpha 通道，SVG 里 `fill` 写 `currentColor` 还是写死颜色都一样**；反过来，任何靠颜色区分的设计挪到这个位置都会退化成剪影。图标照 `resources/raccoon.svg` 的写法来：`width`/`height` + `viewBox="0 0 24 24"`、单条 `path`、`fill="currentColor"`、要做镂空就用 `fill-rule="evenodd"` 把子路径叠起来。
 - **Vite 构建目标锁在 `chrome102`。** `engines.vscode` 是 `^1.75.0`，对应 Electron 19 / Chromium 102，而 Vite 8 默认 target 是 chrome111——`vite.config.mts` 里显式写了 `target: 'chrome102'` 和 `modulePreload.polyfill: false`（polyfill 会注入内联脚本，撞 CSP），改构建配置时别丢这两行。
 - **游戏行为由 `tests/webviews/*` 钉死。** 三个游戏的引擎是从旧模板字符串逐行移植的，俄罗斯方块那份更是字节级恢复的代码——迁移时把行为 quirk 全部写进了测试（消行计分、踢墙序列、7-bag、`hardDrop` 的 `dist--`、贪吃蛇的贴尾判定等），改引擎前先跑 `npm test`，改动行为要同步改测试并想清楚为什么。

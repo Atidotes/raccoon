@@ -5,10 +5,45 @@ resources/**/*.map
 .gitignore
 **/tsconfig*.json
 **/*.map
-node_modules/**
 *.vsix
 vite.config.mts
 vitest.config.mts
 tests/**
 # 插件自己导出 PDF 的产物，别打进扩展包
 *.pdf
+
+# 关于 ssh2：宿主构建里它是 external（见 package.json 的 build:host），运行时从
+# node_modules 加载，所以必须随包发出去。
+#
+# 这里的规则由 vsce 自己解释，**不是 gitignore 语义**（vsce 4.0 的
+# out/package.js 里的 collectFiles）：它把本文件的行分成两份——非 ! 开头的是
+# ignore，! 开头的是 negate，然后
+#
+#     keep = !match(ignore) || match(negate)
+#
+# negate 命中就保留，**没有 gitignore 那条「父目录被排除就不能再放回子文件」的规则**。
+# 所以 node_modules/** 配下面几条 ! 白名单，是能把依赖放回来的；反过来，想在一份
+# negate 底下再排掉某个子目录（比如 ssh2 的 test/）做不到，只能正面列出要哪些子路径
+# ——ssh2 那三条就是这么写的。
+#
+# 实测（vsce 4.0.0）：这里如果只留 node_modules/**，打出来的 vsix 里 node_modules
+# 是空的，装上后一开 SSH 面板就是 Cannot find module 'ssh2'。
+node_modules/**
+!node_modules/ssh2/package.json
+!node_modules/ssh2/lib/**/*.js
+!node_modules/ssh2/util/**
+!node_modules/asn1/**
+!node_modules/safer-buffer/**
+!node_modules/bcrypt-pbkdf/**
+!node_modules/tweetnacl/**
+# ssh2 只放行三条路径，用意分别是：
+#   lib/**/*.js  安装时 node-gyp 编出来的 build/（约 830KB 中间产物 + sshcrypto.node）
+#                不进包。那个 .node 是按构建机的 Node ABI 编的，在 Electron 里 require
+#                必然失败；这段 require 被 ssh2 自己用空 try/catch 包着
+#                （lib/protocol/crypto.js），会回退到纯 JS 实现，功能一样只是慢点。
+#                除开 build/，lib 下没有别的非 .js 文件，所以要 .js 就够。
+#   package.json require('ssh2') 靠它解析 main 字段。
+#   util/**      Windows 上 PuTTY pageant 用的（lib/agent.js 按 __dirname 找 pagent.exe）。
+#                我们只走 socket，用不到，但 60KB 不值当为它留个坑。
+# 同理不进包的还有 ssh2 的 test/ 和 examples/（约 620KB）。cpu-features 和 nan 是
+# optionalDependencies，vsce 只收 dependencies 那棵树，本来就不会带上。
