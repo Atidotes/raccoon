@@ -3,3 +3,7 @@ out/
 dist/
 *.vsix
 .DS_Store
+
+# Visual Studio 宿主的构建产物（src/visualstudio）
+src/visualstudio/**/bin/
+src/visualstudio/**/obj/

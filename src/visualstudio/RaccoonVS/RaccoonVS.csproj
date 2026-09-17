@@ -1,0 +1,97 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Visual Studio 版 Raccoon 的宿主工程（VSSDK 进程内扩展）。
+
+    几点约定：
+    - net48 + UseWPF：WebView2 的 WPF 控件要 WPF，VS 2022 的进程内扩展要 .NET Framework。
+    - 前端产物（dist/webviews）与 VS Code 版共用，由根目录的 npm run build:webviews 产出，
+      这里只负责作为 Content 打进 vsix。构建顺序必须是 npm 先、MSBuild 后。
+    - 版本号由 CI 通过 -p:VsixVersion=1.2.3.0 传入（取 package.json 的 version 补一段）。
+    - vsix 打包走 Microsoft.VSSDK.BuildTools 自带的 targets；它会自己设置 VSToolsPath，
+      所以不用像老模板那样依赖 $(VSToolsPath)\VSSDK。部署（DeployExtension）在 dotnet build
+      下不支持，CI 只打包不部署。
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>RaccoonVS</RootNamespace>
+    <AssemblyName>RaccoonVS</AssemblyName>
+    <NeutralLanguage>zh-CN</NeutralLanguage>
+    <!-- 扩展要能被 VS 从安装目录加载，程序集路径得写进 pkgdef -->
+    <UseCodebase>true</UseCodebase>
+    <GeneratePkgDefFile>true</GeneratePkgDefFile>
+    <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
+    <IncludeDebugSymbolsInVSIXContainer>false</IncludeDebugSymbolsInVSIXContainer>
+    <CopyBuildOutputToOutputDirectory>true</CopyBuildOutputToOutputDirectory>
+    <CopyOutputSymbolsToOutputDirectory>false</CopyOutputSymbolsToOutputDirectory>
+    <!-- CI 里覆盖；本地直接 build 时用这个占位 -->
+    <VsixVersion Condition="'$(VsixVersion)' == ''">0.1.0.0</VsixVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- VSSDK 的构建目标与工具链（只在构建期用，不进 vsix） -->
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2142" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Shell.15.0" Version="17.14.40264" />
+    <PackageReference Include="Microsoft.VisualStudio.Shell.Framework" Version="17.14.40264" />
+    <!-- 导出 PDF 要读活动文档，走 DTE（17.14.40263 不存在，40260 是 17.14 上最新的） -->
+    <PackageReference Include="EnvDTE" Version="17.14.40260" />
+    <!-- WebView2 运行时由 VS 2022 安装程序保证存在，包只带 SDK 与 native loader -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
+    <PackageReference Include="Markdig" Version="0.40.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <VSCTCompile Include="Commands.vsct">
+      <ResourceName>Menus.ctmenu</ResourceName>
+    </VSCTCompile>
+    <None Include="source.extension.vsixmanifest">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <SubType>Designer</SubType>
+    </None>
+    <!--
+      仓库根目录的 LICENSE 没有扩展名，而 vsixmanifest 的 <License> 要求扩展名来判定格式。
+      这里改名为 LICENSE.txt 打进 vsix，安装时会显示在扩展详情页。
+    -->
+    <None Include="..\..\LICENSE">
+      <Link>LICENSE.txt</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </None>
+  </ItemGroup>
+
+  <!--
+    WebView2 的 native loader 显式打进 vsix。
+
+    Microsoft.Web.WebView2 是按 RID 约定布局的（runtimes/win-x64/native/），VSSDK 的
+    默认收集不一定会把 RID 资产算进来。缺了它的后果是安装后一开面板就报 WebView2
+    初始化失败——CI 里那条「解开 vsix 找 WebView2Loader.dll」的自检就是盯这个的。
+    路径由 NuGet 解析后写进 PkgWebView2NativePath，所以升级包版本时这里不用跟着改。
+  -->
+  <ItemGroup Condition="'$(PkgWebView2NativePath)' != ''">
+    <Content Include="$(PkgWebView2NativePath)">
+      <Link>runtimes\win-x64\native\WebView2Loader.dll</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!--
+    前端产物。Link 决定它在 vsix 里的落点：dist/webviews/<app>/index.html。
+    运行时用 Assembly.Location 拼同一路径（见 WebViewHost.ResolveAppDirectory）。
+  -->
+  <ItemGroup>
+    <Content Include="..\..\dist\webviews\**\*">
+      <Link>dist\webviews\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="Exists('$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets')" />
+
+</Project>

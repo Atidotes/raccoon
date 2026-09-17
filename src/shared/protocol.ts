@@ -21,6 +21,26 @@ export type {
 export const MSG_READY = 'ready';
 export const MSG_HIGH_SCORE = 'highScore';
 export const MSG_GAME_OVER = 'gameOver';
+/** 宿主 → webview：当前配色是深色还是浅色（Visual Studio 宿主专用，见下） */
+export const MSG_THEME = 'theme';
+
+export const THEME_LIGHT = 'light';
+export const THEME_DARK = 'dark';
+
+/**
+ * 配色种类。
+ *
+ * VS Code 会把 --vscode-* 变量直接注入页面，前端不需要宿主告诉它主题；
+ * Visual Studio 的 WebView2 没有这套注入，且它的 prefers-color-scheme 跟的是
+ * Windows 系统主题而不是 VS 主题——深色 VS + 浅色系统的组合会瞬间闪瞎。
+ * 所以 C# 侧在 webview 就绪后补发这条消息，前端据此切 theme.css 里的调色板。
+ */
+export type ThemeKind = typeof THEME_LIGHT | typeof THEME_DARK;
+
+export interface ThemeMessage {
+    command: typeof MSG_THEME;
+    theme: ThemeKind;
+}
 
 export interface ReadyMessage {
     command: typeof MSG_READY;
@@ -184,6 +204,7 @@ export type WebviewToHost =
 
 /** 宿主 → webview */
 export type HostToWebview =
+    | ThemeMessage
     | HighScoreMessage
     | SshServersMessage
     | SshStatusMessage

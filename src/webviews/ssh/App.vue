@@ -23,7 +23,8 @@ import {
     MSG_SSH_SERVERS,
     MSG_SSH_STATUS,
     MSG_SSH_TEST,
-    MSG_SSH_TEST_RESULT
+    MSG_SSH_TEST_RESULT,
+    MSG_THEME
 } from '../../shared/protocol';
 import type {
     FieldErrors,
@@ -32,7 +33,7 @@ import type {
     ServerListItem,
     SshTestResult
 } from '../../shared/protocol';
-import { useVsCodeApi } from '../shared/vscode';
+import { applyTheme, onHostMessage, useVsCodeApi } from '../shared/vscode';
 import ServerForm from './components/ServerForm.vue';
 import TerminalTabs from './components/TerminalTabs.vue';
 import {
@@ -157,12 +158,7 @@ watch(showTerminal, async (visible) => {
     tabsRef.value?.fit();
 });
 
-function handleMessage(event: MessageEvent): void {
-    const msg = event.data as HostToWebview | undefined;
-    if (!msg) {
-        return;
-    }
-
+function handleMessage(msg: HostToWebview): void {
     switch (msg.command) {
         case MSG_SSH_SERVERS: {
             servers.value = msg.servers;
@@ -193,15 +189,24 @@ function handleMessage(event: MessageEvent): void {
             testing.value = false;
             testResult.value = msg.ok ? { ok: true } : { ok: false, detail: msg.detail };
             break;
+
+        case MSG_THEME:
+            // VS Code 宿主不会发这条（它直接注入 --vscode-* 变量），
+            // 只有 Visual Studio 的 WebView2 靠它切深浅配色
+            applyTheme(msg.theme);
+            break;
     }
 }
 
+let stopListening: (() => void) | undefined;
+
 onMounted(() => {
-    window.addEventListener('message', handleMessage);
+    // 监听的挂载点由宿主决定：WebView2 在 chrome.webview 上，VS Code 在 window 上
+    stopListening = onHostMessage(handleMessage);
     vscode?.postMessage({ command: MSG_SSH_READY });
 });
 
-onBeforeUnmount(() => window.removeEventListener('message', handleMessage));
+onBeforeUnmount(() => stopListening?.());
 </script>
 
 <template>

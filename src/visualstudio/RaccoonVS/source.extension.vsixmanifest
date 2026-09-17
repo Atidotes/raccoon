@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0"
+                xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"
+                xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Id="Raccoon.VisualStudio"
+              Version="$(VsixVersion)"
+              Language="zh-CN"
+              Publisher="Atidotes" />
+    <DisplayName>Raccoon</DisplayName>
+    <Description>游戏 / 办公 / 小工具集合：俄罗斯方块、五子棋、贪吃蛇、SSH 连接、Markdown 导出 PDF、DeepSeek 余额。</Description>
+    <MoreInfo>https://github.com/Atidotes/raccoon</MoreInfo>
+    <License>LICENSE.txt</License>
+    <Tags>games, ssh, markdown, pdf, deepseek, tools</Tags>
+  </Metadata>
+
+  <Installation>
+    <!--
+      Community 这个 Id 覆盖全部 SKU（Pro / Enterprise 安装时会按 Community 报兼容）。
+      ProductArchitecture 必须是 amd64：VS 2022 是纯 64 位进程。
+      限定 [17.0,18.0)：VS 2019 不保证带 WebView2 Runtime，VS 2022 安装程序强制预装。
+    -->
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,18.0)">
+      <ProductArchitecture>amd64</ProductArchitecture>
+    </InstallationTarget>
+  </Installation>
+
+  <Dependencies>
+    <Dependency Id="Microsoft.Framework.NDP" DisplayName="Microsoft .NET Framework" Version="[4.5,)" />
+  </Dependencies>
+
+  <Prerequisites>
+    <Prerequisite Id="Microsoft.VisualStudio.Component.CoreEditor"
+                 Version="[17.0,18.0)"
+                 DisplayName="Visual Studio 核心编辑器" />
+  </Prerequisites>
+
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.VsPackage"
+           d:Source="Project"
+           d:ProjectName="%CurrentProject%"
+           Path="|%CurrentProject%;PkgdefProjectOutputGroup|" />
+  </Assets>
+</PackageManifest>

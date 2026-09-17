@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable"
+              xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <!--
+    命令表：工具菜单下的「Raccoon」子菜单。
+
+    guidSHLMainMenu / IDG_VS_MM_TOOLS_OTHER 是 VS 自己的「工具」菜单及其附加项分组，
+    挂在它下面就不用自己造顶层菜单。按钮文案与 VS Code 版的 category "Raccoon" 对齐。
+  -->
+
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+  <Extern href="vscmdids.h" />
+
+  <Commands package="guidRaccoonPackage">
+
+    <Menus>
+      <Menu guid="guidCmdSet" id="menuRaccoon" priority="0x0200" type="Menu">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_MM_TOOLS_OTHER" />
+        <Strings>
+          <ButtonText>Raccoon</ButtonText>
+        </Strings>
+      </Menu>
+    </Menus>
+
+    <Groups>
+      <Group guid="guidCmdSet" id="grpGames" priority="0x0100">
+        <Parent guid="guidCmdSet" id="menuRaccoon" />
+      </Group>
+      <Group guid="guidCmdSet" id="grpTools" priority="0x0200">
+        <Parent guid="guidCmdSet" id="menuRaccoon" />
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <!-- 游戏 -->
+      <Button guid="guidCmdSet" id="cmdidTetris" priority="0x0100" type="Button">
+        <Parent guid="guidCmdSet" id="grpGames" />
+        <Strings>
+          <ButtonText>俄罗斯方块</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidCmdSet" id="cmdidGomoku" priority="0x0200" type="Button">
+        <Parent guid="guidCmdSet" id="grpGames" />
+        <Strings>
+          <ButtonText>五子棋</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidCmdSet" id="cmdidSnake" priority="0x0300" type="Button">
+        <Parent guid="guidCmdSet" id="grpGames" />
+        <Strings>
+          <ButtonText>贪吃蛇</ButtonText>
+        </Strings>
+      </Button>
+
+      <!-- 工具 -->
+      <Button guid="guidCmdSet" id="cmdidSsh" priority="0x0100" type="Button">
+        <Parent guid="guidCmdSet" id="grpTools" />
+        <Strings>
+          <ButtonText>SSH 连接</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidCmdSet" id="cmdidExportPdf" priority="0x0200" type="Button">
+        <Parent guid="guidCmdSet" id="grpTools" />
+        <Strings>
+          <ButtonText>导出为 PDF</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidCmdSet" id="cmdidRefreshBalance" priority="0x0300" type="Button">
+        <Parent guid="guidCmdSet" id="grpTools" />
+        <Strings>
+          <ButtonText>刷新 DeepSeek 余额</ButtonText>
+        </Strings>
+      </Button>
+    </Buttons>
+
+  </Commands>
+
+  <Symbols>
+    <!-- 与 RaccoonVSPackage.cs 的 PackageRegistration(Guid) 必须一致 -->
+    <GuidSymbol name="guidRaccoonPackage" value="{9C4B1B3E-7E1A-4A6E-9E5B-2F1B4A6C7D80}" />
+
+    <GuidSymbol name="guidCmdSet" value="{2C1A7D5E-9B3F-4E2A-8C6D-1F0B3A5C7E90}">
+      <IDSymbol name="menuRaccoon" value="0x1000" />
+      <IDSymbol name="grpGames" value="0x1010" />
+      <IDSymbol name="grpTools" value="0x1020" />
+      <IDSymbol name="cmdidTetris" value="0x0100" />
+      <IDSymbol name="cmdidGomoku" value="0x0200" />
+      <IDSymbol name="cmdidSnake" value="0x0300" />
+      <IDSymbol name="cmdidSsh" value="0x0400" />
+      <IDSymbol name="cmdidExportPdf" value="0x0500" />
+      <IDSymbol name="cmdidRefreshBalance" value="0x0600" />
+    </GuidSymbol>
+  </Symbols>
+
+</CommandTable>

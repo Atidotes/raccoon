@@ -1,0 +1,104 @@
+name: Build VSIX
+
+# Visual Studio 版的宿主是 C#（net48 + VSSDK），只能在 Windows 上打包。
+# 开发机是 macOS 时这里就是唯一的编译验证途径，所以这个 workflow 同时承担「能不能编过」的职责。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  vsix:
+    # 固定 windows-2022：镜像里带 VS 2022 Enterprise 与 VisualStudioExtension 工作负载
+    # （含 VSSDK 的 vsct.exe / CreateVsixContainer 目标），不用现装。
+    # 不用 windows-latest，防止 runner 大版本漂移后工具链对不上。
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 必须排在 msbuild 前面：compile 里的 clean 会删掉 dist，
+      # 而后面的 msbuild 要靠 dist/webviews 打进 vsix。
+      - name: Build webviews
+        run: npm run compile
+
+      - name: Verify webview assets
+        shell: pwsh
+        run: |
+          $apps = @('tetris', 'snake', 'gomoku', 'ssh')
+          foreach ($app in $apps) {
+            $index = "dist/webviews/$app/index.html"
+            if (-not (Test-Path $index)) { throw "缺少前端产物：$index" }
+          }
+
+      - name: Locate MSBuild
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "找不到 vswhere：$vswhere" }
+          # 通配会命中多条（amd64 / x86 / arm64 各一份），取第一条
+          $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild `
+                               -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          if (-not $msbuild) { throw "vswhere 没有找到 MSBuild" }
+          # PowerShell 5.1 的 -Encoding utf8 会写 BOM，GITHUB_ENV 解析不了第一行，必须用 ascii
+          "MSBUILD=$msbuild" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+          Write-Host "MSBuild: $msbuild"
+
+      - name: Build VSIX
+        shell: pwsh
+        run: |
+          # 版本号取 package.json 的 version 补一段，凑成 vsix 要求的四段式
+          $version = (node -p "require('./package.json').version") + ".0"
+          Write-Host "VsixVersion: $version"
+          & $env:MSBUILD src/visualstudio/RaccoonVS.sln -restore -nologo `
+              -p:Configuration=Release -p:VsixVersion=$version -p:DeployExtension=false
+          if ($LASTEXITCODE -ne 0) { throw "VSIX 构建失败（退出码 $LASTEXITCODE）" }
+
+      # 内容自检：WebView2 的 native loader 是否能被打进 vsix，是安装后能不能启动的关键。
+      # 缺了它，VS 里打开面板会直接报 WebView2 初始化失败。
+      - name: Verify VSIX contents
+        shell: pwsh
+        run: |
+          $vsix = Get-ChildItem src/visualstudio/RaccoonVS/bin/Release -Filter *.vsix -Recurse |
+                  Select-Object -First 1
+          if (-not $vsix) { throw "没有产出 vsix" }
+          Write-Host "VSIX: $($vsix.FullName)"
+
+          # Windows 自带 bsdtar，vsix 是 zip，-tf 能直接列出条目
+          $entries = & tar -tf $vsix.FullName
+          $webviewCount = ($entries | Where-Object { $_ -like "dist/webviews/*" }).Count
+          Write-Host "前端产物条目数：$webviewCount"
+
+          if ($webviewCount -lt 4) { throw "vsix 里没有打进 dist/webviews" }
+
+          if (-not ($entries | Where-Object { $_ -like "*WebView2Loader.dll" })) {
+            throw "vsix 里没有 WebView2Loader.dll，WebView2 起不来"
+          }
+
+          Write-Host "自检通过，共 $($entries.Count) 个条目"
+
+      - name: Package VS Code extension
+        run: npx @vscode/vsce package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raccoon-vscode
+          path: "*.vsix"
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raccoon-visualstudio
+          path: src/visualstudio/RaccoonVS/bin/Release/**/*.vsix
+          if-no-files-found: error

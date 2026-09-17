@@ -1,6 +1,6 @@
 # Raccoon
 
-一只住在 VS Code 里的浣熊，喜欢翻代码垃圾桶，把游戏、办公和小工具都叼回来给你。目前六个功能：
+一只住在编辑器里的浣熊，喜欢翻代码垃圾桶，把游戏、办公和小工具都叼回来给你。VS Code 与 Visual Studio 2022 都能装（同一份前端，两套宿主，见「Visual Studio 版」）。目前六个功能：
 
 - **Markdown 导出 PDF** —— 纯 JS 实现，不需要本机 Python 环境
 - **DeepSeek 余额** —— 在状态栏实时显示账户余额
@@ -229,6 +229,76 @@ ssh2 默认**完全不校验主机密钥**，链路被劫持时攻击者用自�
 - **吃满整盘算通关**，遮罩显示 `PERFECT`。
 - 面板行为与俄罗斯方块一致：单开一局、切走再切回不丢进度。
 
+## Visual Studio 版
+
+同一份前端产物也打包成 Visual Studio 2022 扩展。两个平台的插件体系是两套运行时，**宿主侧各写一份**，但网页侧完全复用：
+
+```
+VS Code 版                                Visual Studio 版
+─────────────────────────                 ──────────────────────────────
+TS 宿主 out/extension.js                  C# 宿主 src/visualstudio/RaccoonVS/
+  ├ ssh2 / SecretStorage                    ├ SSH.NET / DPAPI
+  ├ https / 状态栏                          ├ HttpClient / IVsStatusbar
+  └ marked + 外挂 Chrome 出 PDF              └ Markdig + WebView2 PrintToPdfAsync
+                    ↓                                    ↓
+            前端 dist/webviews/<app>/（同一份构建产物、同一套消息协议）
+             桥  acquireVsCodeApi              桥  window.chrome.webview
+```
+
+前端只跟宿主通过 `postMessage` + JSON 打交道，所以 `src/webviews` 一行代码都没分叉：`src/webviews/shared/vscode.ts` 里探测一下 `chrome.webview`，两个宿主就都能跑。消息名与字段在 `src/shared/protocol.ts` 和 `src/visualstudio/RaccoonVS/Protocol.cs` 两侧对照实现。
+
+功能对应关系：Tools 菜单下的「Raccoon」子菜单给出 SSH 连接 / 三个游戏 / 导出 PDF / 刷新余额六个命令，都是**工具窗口**（不是编辑器标签页）。
+
+### 用起来
+
+需要 **Visual Studio 2022（17.x，任意 SKU）**。装 vsix 即可，扩展自带 WebView2 SDK，运行时由 VS 安装程序保证（2022 强制预装）。
+
+### 与 VS Code 版的差异
+
+| 方面 | 差异 |
+| --- | --- |
+| ssh-agent 认证 | **不支持。** SSH.NET 官方没有 agent 支持，第三方的 `SshNet.Agent` 有已知 bug（ED25519 密钥损坏、agent 未启动时死锁）。选它会给个明确的提示，密码和私钥文件两种方式不受影响 |
+| 密码存储 | `%APPDATA%\RaccoonVS\secrets.dat`，用 DPAPI（CurrentUser）加密，等价于 VS Code 版的 SecretStorage |
+| 服务器清单 | `%APPDATA%\RaccoonVS\servers.json`，不含任何密钥 |
+| 最高分 | `%APPDATA%\RaccoonVS\high_scores.json` |
+| DeepSeek 配置 | `%APPDATA%\RaccoonVS\settings.json`（VS 版没有「工作区设置」这一套） |
+| 游戏结束提示 | 写状态栏而不是弹窗——不想为一个游戏提示弹模态框打断人 |
+| 主题同步 | WebView2 的 `prefers-color-scheme` 跟的是 Windows 主题而不是 VS 主题，所以由宿主读 `VSColorTheme` 后主动下发。换主题后重开一次面板生效（没订阅 shell 的广播消息，见下文） |
+| 导出 PDF | 不需要本机 Chrome，用 WebView2 的 `PrintToPdfAsync` |
+
+### 构建
+
+**只能在 Windows 上打包**（VSSDK 的 `vsct.exe` 是 Windows 可执行文件）。需要 VS 2022 装了「Visual Studio 扩展开发」工作负载（`Microsoft.VisualStudio.Component.VSSDK`），它同时带来 .NET Framework 4.8 的 targeting pack。
+
+```powershell
+npm ci
+npm run compile        # 必须先跑：compile 里的 clean 会删 dist，而 msbuild 要靠 dist/webviews 打进 vsix
+npm run build:vs       # = dotnet msbuild src/visualstudio/RaccoonVS.sln -restore -p:Configuration=Release
+```
+
+产物在 `src/visualstudio/RaccoonVS/bin/Release/RaccoonVS.vsix`。
+
+**构建顺序不能反。** `npm run compile` 里的 `clean` 会删掉 `dist/`，而 msbuild 阶段要靠 `dist/webviews/**` 打进 vsix——先打包再编译的话，打出来的 vsix 里一个前端产物都没有，装上去面板是空白。
+
+**装之前先自检 vsix 内容。** 有两样东西缺了都表现为「面板打不开」，但原因完全不同：
+
+```powershell
+tar -tf src/visualstudio/RaccoonVS/bin/Release/RaccoonVS.vsix | Select-String "WebView2Loader|dist/webviews"
+```
+
+- `runtimes/win-x64/native/WebView2Loader.dll` —— 缺了 WebView2 初始化失败。这个文件在 csproj 里是显式链接进 vsix 的（NuGet 按 RID 约定布局，VSSDK 的默认收集不保证会算进来），路径由 NuGet 解析，升级 WebView2 包版本时不用改。
+- `dist/webviews/<app>/index.html` 四个 —— 缺了说明构建顺序反了。
+
+**安装**：关掉 VS，双击 vsix 按提示装（或 `VSIXInstaller.exe /q <路径>`）；装的时候 VS 必须是关闭状态，否则要重启。
+
+**版本号**由 CI 通过 `-p:VsixVersion=1.2.3.0` 注入（取 `package.json` 的 `version` 补成四段）；本地直接 build 时 csproj 里的占位值是 `0.1.0.0`。装了新版会覆盖旧版，但**已经打开的 VS 实例不会热加载**——验证新包前把 VS 全关掉再装。
+
+### 不用 Windows 时的替代验证
+
+推 GitHub 后由 `.github/workflows/build-vs.yml` 承担编译验证与打包：固定 `windows-2022` 镜像（自带 VS 2022 Enterprise + VisualStudioExtension 工作负载，不用现装工具链），vswhere 定位 MSBuild，打完包解开 vsix 自检上面那两样。**这个 workflow 的主要职责就是「能不能编过」**——没有 Windows 机器时它是唯一的真实反馈，第一轮大概率还要修几处 API 用法。
+
+本机（macOS）能做的两件事：用 SDK 风格的临时工程引同一批 `.cs` 文件抓 API 与语法错误（`net48` + `Microsoft.NETFramework.ReferenceAssemblies`）；对拿不准的 API，用 `MetadataLoadContext` 反射目标 dll 把签名打出来确证——`ToolWindowPane.Frame` 声明类型其实是 `object` 这类事就是这么发现的。两种办法都没法替代真机运行。
+
 ## 项目结构
 
 | 位置 | 说明 |
@@ -251,7 +321,18 @@ ssh2 默认**完全不校验主机密钥**，链路被劫持时攻击者用自�
 | `src/gomoku/startGomoku.ts` | 五子棋入口：调面板工厂（无消息、无最高分） |
 | `src/snake/startSnake.ts` | 贪吃蛇入口：调面板工厂，只留通知文案 |
 | `src/webviews/<game>/` | 各游戏网页（Vue 3 + TS）：`App.vue` 管流转、`components/` 管 Canvas 渲染、`logic/` 是纯逻辑引擎 |
-| `src/webviews/shared/` | 网页侧共用：`Cabinet.vue`（CRT 机箱外壳）、`vscode.ts`（`acquireVsCodeApi` 封装，引用共享协议） |
+| `src/webviews/shared/` | 网页侧共用：`Cabinet.vue`（CRT 机箱外壳）、`vscode.ts`（双宿主通信封装）、`theme.css`（`--vscode-*` 变量的兜底调色板） |
+| `src/visualstudio/RaccoonVS/` | Visual Studio 版宿主（C#，net48 + VSSDK），见下一行起的细分 |
+| ↳ `WebViewPanelHost.cs` | 内嵌 WebView2 的面板宿主：虚拟主机映射 `raccoon.test`、消息双向转发、线程兜底 |
+| ↳ `WebViewToolWindow.cs` | 工具窗口基类：主题取色下发、消息组装、关闭清理 |
+| ↳ `RaccoonVSPackage.cs` / `Commands.vsct` | 包入口与命令表（Tools → Raccoon 子菜单）；命令 id 两侧必须一致 |
+| ↳ `Ssh/` | SSH 连接层，逐文件对应到 `src/ssh/`（`SshSessionManager` / `SshServerStore` / `SshKnownHosts` / `SshValidate` / `SshTypes`） |
+| ↳ `Games.cs` | 三个游戏的工具窗口（VS 的工具窗口是单实例 Frame，所以一个游戏一个类型），共用一套消息路由 |
+| ↳ `Pdf/` | `ExportPdfCommand.cs` 取活动文档 + Markdig 渲染 + `PrintToPdfAsync`；`LinkRewriter.cs` 对应 `markdownToPdf.ts` 的链接改写 |
+| ↳ `DeepSeek/BalanceService.cs` | 余额定时查询与状态栏显示 |
+| ↳ `Storage.cs` | `%APPDATA%\RaccoonVS` 下的原子 JSON 存储 + DPAPI 密钥存储 |
+| ↳ `Protocol.cs` | 消息名常量与信封类型（含 `[JsonExtensionData]` 的兜底字段），对照 `src/shared/protocol.ts` |
+| ↳ `VsShell.cs` | 确认对话框与状态栏的一层薄封装（取不到服务就降级，不抛） |
 | `tests/` | vitest 单元测试：三个游戏引擎 + DeepSeek / Markdown / SSH 纯函数 |
 | `src/raccoonTreeDataProvider.ts` | 侧边栏功能入口列表，点击执行对应命令 |
 | `vite.config.mts` | 三个游戏 + SSH 四个 webview 的多入口构建（`root: src/webviews` → `dist/webviews/<app>/`） |
@@ -292,10 +373,13 @@ npm run watch:types   # 只监听宿主类型检查
 ## 打包
 
 ```bash
-npm run package       # 产出 raccoon-0.1.0.vsix
+npm run package       # VS Code 版：产出 raccoon-0.1.0.vsix
+npm run package:vs    # Visual Studio 版：npm 构建 + MSBuild 打包（只能在 Windows 上跑）
 ```
 
 `package.json` 的 `repository` 已填成真实地址，`vsce` 不再提示需要 `--allow-missing-repository`。换仓库地址时这里要同步。
+
+Visual Studio 版的详细构建步骤与产物路径见上面「Visual Studio 版 → 构建」。
 
 ## 已知约束
 
@@ -318,6 +402,19 @@ npm run package       # 产出 raccoon-0.1.0.vsix
 - **活动栏图标是 CSS mask，不是图片。** 这块查证过 VS Code 1.138 的实现：`toCompositeBarActionItem` 对扩展贡献的 SVG 图标生成 `mask: url(图标) no-repeat 50% 50%; mask-size: var(--activity-bar-icon-size, 24px)`，再用 `label.style.backgroundColor = <主题色>` 上色。也就是说**形状只取 SVG 的 alpha 通道，SVG 里 `fill` 写 `currentColor` 还是写死颜色都一样**；反过来，任何靠颜色区分的设计挪到这个位置都会退化成剪影。图标照 `resources/raccoon.svg` 的写法来：`width`/`height` + `viewBox="0 0 24 24"`、单条 `path`、`fill="currentColor"`、要做镂空就用 `fill-rule="evenodd"` 把子路径叠起来。
 - **Vite 构建目标锁在 `chrome102`。** `engines.vscode` 是 `^1.75.0`，对应 Electron 19 / Chromium 102，而 Vite 8 默认 target 是 chrome111——`vite.config.mts` 里显式写了 `target: 'chrome102'` 和 `modulePreload.polyfill: false`（polyfill 会注入内联脚本，撞 CSP），改构建配置时别丢这两行。
 - **游戏行为由 `tests/webviews/*` 钉死。** 三个游戏的引擎是从旧模板字符串逐行移植的，俄罗斯方块那份更是字节级恢复的代码——迁移时把行为 quirk 全部写进了测试（消行计分、踢墙序列、7-bag、`hardDrop` 的 `dist--`、贪吃蛇的贴尾判定等），改引擎前先跑 `npm test`，改动行为要同步改测试并想清楚为什么。
+
+### Visual Studio 版特有
+
+- **`window.chrome` 在 VS Code 里也存在。** Electron 会给页面注入 `window.chrome`（只是没有 `webview` 属性），所以双宿主探测必须写成 `chrome?.webview`，只判断 `chrome` 会把 VS Code 误判成 WebView2，SSH 面板直接收不到宿主消息。改 `src/webviews/shared/vscode.ts` 时留意这条。
+- **WebView2 的消息事件打在 `chrome.webview` 上，不是 `window`。** 这是两个宿主唯一一处结构性差异，已经由 `onHostMessage()` 吃掉；`event.data` 两边都是已解析的对象（C# 侧恒用 `PostWebMessageAsJson`）。
+- **前端产物必须走虚拟主机映射（`https://raccoon.test/<app>/`），不能直接开 `file://`。** `file://` 的 null origin 会让 `type="module"` 直接被拦，Vite 产物是 ES module，用文件路径打不开。域名用 `.test`（RFC 6761 保留）而不是 `.local`（会和 mDNS 打架），映射每次 `CoreWebView2` 重建都要重设——它是实例级的。
+- **CSP 靠派生一份 `index.host.html` 注入，两条更「正统」的路都走不通。** 想拦响应补 CSP 头：能改写响应的 `WebResourceRequested` 拿到的是已构造好的响应，读不到响应体；能读体的 `WebResourceResponseReceived` 又只能看不能改。想用 `NavigateToString` 注入 `<meta>`：那样文档是不透明源，页面里的 ES module 请求会被判成跨源，连同源的虚拟主机都拉不下来。所以是在 `index.html` 旁边派生一份注入了 `<meta>` 的副本，仍按 URL 从虚拟主机装载——源和相对路径解析都与原文件一致。派生文件只在内容对不上时重写，构建产物本身不动。
+- **`ToolWindowPane.Frame` 在 `Microsoft.VisualStudio.Shell.15.0` 里声明的类型是 `object`，不是 `IVsWindowFrame`。** 想调 `Show()` 必须自己转一次；直接 `.Frame?.Show()` 编不过。
+- **`CanTrust` 默认是 `true`。** 主机密钥校验的 handler 里不显式置 `false` 就等于零校验——这个默认值的方向很反直觉，`SshSessionManager.BuildClient` 里有注释。
+- **碰 VS 服务前必须切回 UI 线程，且这条不能靠调用方自觉。** `IVsStatusbar`、`IVsWindowFrame`、`DTE`、WebView2 都是 UI 线程专属，而调用方遍布各处（SSH 读取线程、余额轮询、WPF 的 `Loaded`）。统一在 `VsShell.Status()` 和 `WebViewPanelHost.PostRaw()` 里兜住线程，别在调用点假设自己在哪条线程上。`async void` 只允许出现在 WPF 的事件处理器上，且方法体要全程 try/catch——漏出去的异常是进程级崩溃。
+- **没订阅 shell 的主题广播消息。** `IVsUIShell` 的广播要自己实现 `IVsBroadcastMessageEvents` 再拿 cookie，接口在 17.x 还挪过位置，为一个「锦上添花」的刷新去赌它不划算。现状是面板每次打开都重新下发主题，用户换完主题重开一次面板即可。
+- **`LICENSE` 没有扩展名，vsix 里要改名成 `LICENSE.txt`。** vsixmanifest 的 `<License>` 靠扩展名判定格式，所以 csproj 里用 `<Link>LICENSE.txt</Link>` 换名打进包。
+- **不要给工具窗口设 `BitmapResourceID`。** 项目里没有图标条（`.vsct` 里也没有 `<Bitmaps>`），指过去只会让 VS 找不到资源。不设时用默认图标，四个面板靠 `Caption` 区分。
 
 ## 发布前
 

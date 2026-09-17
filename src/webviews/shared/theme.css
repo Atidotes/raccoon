@@ -1,0 +1,112 @@
+/**
+ * --vscode-* 变量的兜底调色板，只在 Visual Studio（WebView2）宿主里真正生效。
+ *
+ * VS Code 会把这些变量注入页面，变量就近生效——宿主注入的值在 :root 上声明得比
+ * 这里晚，永远赢过这份兜底，所以同一份产物在 VS Code 里的外观一个字都不会变。
+ *
+ * 取值对齐 VS Code 的 Dark+ / Light+ 主题，让两边的观感尽量一致。
+ * 切换靠 <html data-raccoon-theme="dark|light">，由 applyTheme() 打（见 shared/vscode.ts）。
+ * 默认深色：没有宿主消息时（比如直接在浏览器里打开产物）也保证是能看的状态，
+ * 而且深色是 SSH 面板的既有观感。
+ */
+
+:root,
+:root[data-raccoon-theme='dark'] {
+    color-scheme: dark;
+
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-disabledForeground: #6e6e6e;
+    --vscode-errorForeground: #f48771;
+    --vscode-focusBorder: #0078d4;
+
+    --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --vscode-editor-font-family: Consolas, 'Courier New', monospace;
+    --vscode-editor-font-size: 13px;
+
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #cccccc;
+    --vscode-panel-border: #3c3c3c;
+    --vscode-editorWidget-background: #252526;
+
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-border: transparent;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-button-secondaryForeground: #cccccc;
+    --vscode-button-secondaryHoverBackground: #45494e;
+
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-border: #3c3c3c;
+    --vscode-inputValidation-errorBackground: #5a1d1d;
+    --vscode-inputValidation-errorBorder: #be1100;
+
+    --vscode-charts-green: #89d185;
+    --vscode-charts-yellow: #e2c08d;
+    --vscode-charts-red: #f14c4c;
+
+    --vscode-editorGroupHeader-tabsBackground: #252526;
+    --vscode-tab-activeBackground: #1e1e1e;
+    --vscode-tab-activeForeground: #ffffff;
+    --vscode-tab-inactiveForeground: #969696;
+
+    --vscode-terminal-background: #1e1e1e;
+    --vscode-terminal-foreground: #cccccc;
+    --vscode-terminal-selectionBackground: #264f78;
+    --vscode-terminalCursor-foreground: #cccccc;
+}
+
+:root[data-raccoon-theme='light'] {
+    color-scheme: light;
+
+    --vscode-foreground: #3b3b3b;
+    --vscode-descriptionForeground: #717171;
+    --vscode-disabledForeground: #a0a0a0;
+    --vscode-errorForeground: #a1260d;
+    --vscode-focusBorder: #0090f1;
+
+    --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --vscode-editor-font-family: Consolas, 'Courier New', monospace;
+    --vscode-editor-font-size: 13px;
+
+    --vscode-editor-background: #ffffff;
+    --vscode-editor-foreground: #3b3b3b;
+    --vscode-panel-border: #d4d4d4;
+    --vscode-editorWidget-background: #f3f3f3;
+
+    --vscode-button-background: #007acc;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #0062a3;
+    --vscode-button-border: transparent;
+    --vscode-button-secondaryBackground: #e4e6f1;
+    --vscode-button-secondaryForeground: #3b3b3b;
+    --vscode-button-secondaryHoverBackground: #d6d8e2;
+
+    --vscode-list-hoverBackground: #e8e8e8;
+    --vscode-toolbar-hoverBackground: rgba(184, 184, 184, 0.31);
+
+    --vscode-input-background: #ffffff;
+    --vscode-input-foreground: #3b3b3b;
+    --vscode-input-border: #cecece;
+    --vscode-inputValidation-errorBackground: #f2dede;
+    --vscode-inputValidation-errorBorder: #be1100;
+
+    --vscode-charts-green: #388a34;
+    --vscode-charts-yellow: #bf8803;
+    --vscode-charts-red: #e51400;
+
+    --vscode-editorGroupHeader-tabsBackground: #f3f3f3;
+    --vscode-tab-activeBackground: #ffffff;
+    --vscode-tab-activeForeground: #333333;
+    --vscode-tab-inactiveForeground: #6d6d6d;
+
+    --vscode-terminal-background: #ffffff;
+    --vscode-terminal-foreground: #333333;
+    --vscode-terminal-selectionBackground: #add6ff;
+    --vscode-terminalCursor-foreground: #333333;
+}
