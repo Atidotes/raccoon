@@ -185,9 +185,22 @@ namespace RaccoonVS.Ssh
                 // 连接被远端掐断时 Read 会抛，跟读到 0 是一回事
             }
 
-            // 链路自己断了（网络切换、服务端踢人）也走收摊流程
-            Cleanup(session.Client);
-            Finish(sessionId, "closed", null);
+            // 链路自己断了（网络切换、服务端踢人）也走收摊流程。
+            // 这两步都套上兜底：本方法跑在裸 Thread 上，任何漏出的异常都会直接炸掉 VS 进程。
+            try
+            {
+                Cleanup(session.Client);
+            }
+            catch (Exception)
+            {
+            }
+            try
+            {
+                Finish(sessionId, "closed", null);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         public void Input(string sessionId, string data)

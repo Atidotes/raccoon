@@ -23,6 +23,7 @@ namespace RaccoonVS
         public const int Ssh = 0x0400;
         public const int ExportPdf = 0x0500;
         public const int RefreshBalance = 0x0600;
+        public const int ConfigureApiKey = 0x0700;
     }
 
     /// <summary>
@@ -78,6 +79,16 @@ namespace RaccoonVS
                 // 导出要读 DTE 的活动文档，这是 UI 线程专属的服务
                 ThreadHelper.ThrowIfNotOnUIThread();
                 Pdf.ExportPdfCommand.Run();
+            });
+            Bind(commandService, CommandIds.ConfigureApiKey, (s, e) =>
+            {
+                // 输入框是 WPF 窗口，必须在 UI 线程上弹
+                ThreadHelper.ThrowIfNotOnUIThread();
+                if (DeepSeek.ApiKeySettings.ConfigureAndSave())
+                {
+                    // 存好了立即查一次，让状态栏马上反映新 key 的结果
+                    _balance?.Refresh();
+                }
             });
             Bind(commandService, CommandIds.RefreshBalance, (s, e) => _balance?.Refresh());
         }

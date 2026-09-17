@@ -128,16 +128,23 @@ namespace RaccoonVS.Ssh
 #pragma warning disable VSTHRD110
                     _sessions.TestAsync(draft).ContinueWith(task =>
                     {
-                        var result = task.Result;
-                        Host.Post(Message(Protocol.MsgSshTestResult, m =>
+                        try
                         {
-                            m["ok"] = result.Value<bool>("ok");
-                            var detail = result.Value<string>("detail");
-                            if (!string.IsNullOrEmpty(detail))
+                            var result = task.Result;
+                            Host.Post(Message(Protocol.MsgSshTestResult, m =>
                             {
-                                m["detail"] = detail;
-                            }
-                        }));
+                                m["ok"] = result.Value<bool>("ok");
+                                var detail = result.Value<string>("detail");
+                                if (!string.IsNullOrEmpty(detail))
+                                {
+                                    m["detail"] = detail;
+                                }
+                            }));
+                        }
+                        catch (Exception)
+                        {
+                            // 这个回调跑在线程池上，漏出去的异常会炸掉整个 VS 进程
+                        }
                     }, TaskScheduler.Default);
 #pragma warning restore VSTHRD110
                     break;

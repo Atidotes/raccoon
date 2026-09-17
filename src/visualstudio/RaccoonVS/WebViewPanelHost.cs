@@ -128,20 +128,24 @@ namespace RaccoonVS
         /// <summary>把消息发给 webview。可在任意线程调用。</summary>
         public void PostRaw(string json)
         {
-            var core = _webView.CoreWebView2;
-            if (core == null)
-            {
-                // 面板还没初始化完或已经销毁，消息没有去处
-                return;
-            }
-
             // WebView2 是 STA 组件，跨线程调用必须回到 UI 线程。
             // 大多数调用方（Ssh 的读取线程、余额轮询）都不在 UI 线程上，所以这里由宿主兜住。
+            //
+            // CoreWebView2 的读取**必须**也放在切到 UI 线程之后：SSH 的连接线程和读循环
+            // 都会在后台线程上调到这里，getter 内部要走 COM 互操作，后台线程上碰它
+            // 轻则抛「调用线程必须是 STA」，重则直接带崩整个 VS 进程——
+            // 之前这个 getter 在 JTF 切换之外，点连接后 VS 闪退就是这个原因。
             ThreadHelper.JoinableTaskFactory.Run(async () =>
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 try
                 {
+                    var core = _webView.CoreWebView2;
+                    if (core == null)
+                    {
+                        // 面板还没初始化完或已经销毁，消息没有去处
+                        return;
+                    }
                     core.PostWebMessageAsJson(json);
                 }
                 catch (Exception)
@@ -307,7 +311,16 @@ namespace RaccoonVS
                 return;
             }
 
-            MessageReceived?.Invoke(this, envelope);
+            try
+            {
+                MessageReceived?.Invoke(this, envelope);
+            }
+            catch (Exception)
+            {
+                // 处理器在 UI 线程上跑，这里漏出去的异常会穿过 WebView2 的回调边界，
+                // 变成未处理的 UI 线程异常——那是整个 VS 进程的死刑。单条坏消息
+                // 最坏丢一个操作，不能让进程陪葬。
+            }
         }
 
         /// <summary>

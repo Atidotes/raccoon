@@ -8,7 +8,11 @@ using Newtonsoft.Json;
 
 namespace RaccoonVS.DeepSeek
 {
-    /// <summary>配置。VS 版没有工作区设置那一套，统一放 %APPDATA%\RaccoonVS\settings.json。</summary>
+    /// <summary>
+    /// 配置。VS 版没有工作区设置那一套，统一放 %APPDATA%\RaccoonVS\settings.json。
+    /// apiKey 字段是早期手工配置的遗留：新配置走「配置 DeepSeek API Key」菜单项，
+    /// 加密存在 secrets.dat；这里保留该字段只为兼容已经手填过的用户。
+    /// </summary>
     internal sealed class Settings
     {
         [JsonProperty("apiKey")]
@@ -37,6 +41,7 @@ namespace RaccoonVS.DeepSeek
             new Dictionary<string, string> { { "CNY", "¥" }, { "USD", "$" } };
 
         private readonly JsonStore<Settings> _settings = new JsonStore<Settings>("settings.json");
+        private readonly SecretStore _secrets = new SecretStore();
         private readonly HttpClient _http;
 
         private Timer _timer;
@@ -62,10 +67,11 @@ namespace RaccoonVS.DeepSeek
                 return;
             }
 
-            var apiKey = (_settings.Read().ApiKey ?? string.Empty).Trim();
+            // 优先读加密存储（菜单项保存的），settings.json 的手填值是兼容回退
+            var apiKey = (_secrets.Get("deepseek.apiKey") ?? _settings.Read().ApiKey ?? string.Empty).Trim();
             if (apiKey.Length == 0)
             {
-                Render("DeepSeek：未配置 API Key", "settings.json 里填 apiKey");
+                Render("DeepSeek：未配置 API Key", "工具 → Raccoon → 配置 DeepSeek API Key");
                 return;
             }
 
