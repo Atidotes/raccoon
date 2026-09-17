@@ -11,23 +11,19 @@ namespace RaccoonVS.Ssh
     /// 每个分支都对应 src/ssh/terminalPanel.ts 里的一个 case，行为必须保持一致：
     /// 校验以宿主为准、删除前先问一句、删记录前先断掉它的会话。
     /// </summary>
-    internal sealed class SshToolWindow : WebViewToolWindow
+    // public + 无参构造：VS 用 Activator.CreateInstance 创建工具窗口（见 WebViewToolWindow 的注释）。
+    public sealed class SshToolWindow : WebViewToolWindow
     {
         private readonly ServerStore _store = new ServerStore();
         private readonly KnownHosts _knownHosts = new KnownHosts();
         private SshSessionManager _sessions;
 
-        private SshToolWindow(RaccoonVSPackage package)
-            : base(package, new WebViewPanelHost("ssh"))
+        public SshToolWindow()
+            : base(new WebViewPanelHost("ssh"))
         {
             // 不设 BitmapResourceID：项目里没有图标条，指过去只会让 VS 找不到资源。
             // 不设时 VS 用默认的工具窗口图标，四个面板靠 Caption 区分。
             Caption = "SSH 连接";
-        }
-
-        public static SshToolWindow Create(RaccoonVSPackage package)
-        {
-            return new SshToolWindow(package);
         }
 
         protected override void OnWebViewReady()

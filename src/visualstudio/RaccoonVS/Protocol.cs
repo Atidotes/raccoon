@@ -44,7 +44,7 @@ namespace RaccoonVS
     /// 从 webview 收到的信封：只取 command，其余字段按需读。
     /// 不镜像 TS 的类型定义，免得两处维护、两边漂移。
     /// </summary>
-    internal sealed class Envelope
+    public sealed class Envelope
     {
         [JsonProperty("command")]
         public string Command { get; set; }

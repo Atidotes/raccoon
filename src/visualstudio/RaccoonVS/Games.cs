@@ -10,7 +10,7 @@ namespace RaccoonVS.Games
     /// 三个游戏共用一套协议：ready（回填最高分）、gameOver（可能破纪录）。
     /// 五子棋没有最高分，把 HighScoreKey 留空即可。
     /// </summary>
-    internal abstract class GameToolWindow : WebViewToolWindow
+    public abstract class GameToolWindow : WebViewToolWindow
     {
         private const string HighScoreFile = "high_scores.json";
 
@@ -20,8 +20,8 @@ namespace RaccoonVS.Games
         private readonly string _key;
         private readonly string _caption;
 
-        protected GameToolWindow(RaccoonVSPackage package, string app, string caption, string highScoreKey)
-            : base(package, new WebViewPanelHost(app))
+        protected GameToolWindow(string app, string caption, string highScoreKey)
+            : base(new WebViewPanelHost(app))
         {
             _caption = caption;
             _key = highScoreKey;
@@ -106,27 +106,29 @@ namespace RaccoonVS.Games
         }
     }
 
-    internal sealed class TetrisToolWindow : GameToolWindow
+    // 三个窗口类必须是 public 且只有无参构造函数：VS 用 Activator.CreateInstance
+    // 创建工具窗口实例，类型不可见或缺无参构造都会在第一次点击菜单时炸。
+    public sealed class TetrisToolWindow : GameToolWindow
     {
-        public TetrisToolWindow(RaccoonVSPackage package)
-            : base(package, "tetris", "🎮 俄罗斯方块", "tetris")
+        public TetrisToolWindow()
+            : base("tetris", "🎮 俄罗斯方块", "tetris")
         {
         }
     }
 
-    internal sealed class SnakeToolWindow : GameToolWindow
+    public sealed class SnakeToolWindow : GameToolWindow
     {
-        public SnakeToolWindow(RaccoonVSPackage package)
-            : base(package, "snake", "🐍 贪吃蛇", "snake")
+        public SnakeToolWindow()
+            : base("snake", "🐍 贪吃蛇", "snake")
         {
         }
     }
 
     /// <summary>五子棋：游戏状态全在网页里，没有最高分。</summary>
-    internal sealed class GomokuToolWindow : GameToolWindow
+    public sealed class GomokuToolWindow : GameToolWindow
     {
-        public GomokuToolWindow(RaccoonVSPackage package)
-            : base(package, "gomoku", "⚫⚪ 五子棋", null)
+        public GomokuToolWindow()
+            : base("gomoku", "⚫⚪ 五子棋", null)
         {
         }
     }

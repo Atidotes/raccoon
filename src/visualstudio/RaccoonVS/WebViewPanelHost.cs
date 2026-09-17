@@ -21,7 +21,7 @@ namespace RaccoonVS
     ///
     /// 前端产物是同一份（dist/webviews），协议也是同一套（见 Protocol.cs）。
     /// </summary>
-    internal class WebViewPanelHost : UserControl
+    public class WebViewPanelHost : UserControl
     {
         /// <summary>
         /// 虚拟主机名。用 .test（RFC 6761 保留域名）而不是 .local——后者可能与 mDNS 冲突。

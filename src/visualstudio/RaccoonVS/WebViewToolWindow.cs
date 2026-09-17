@@ -10,12 +10,16 @@ namespace RaccoonVS
     ///
     /// ToolWindowPane 的构造顺序有个坑——基类构造函数先跑，那时派生类的字段还是 null。
     /// 所以这里不在构造函数里碰任何虚方法，全部走 Loaded 之后再触发的回调。
+    ///
+    /// 构造函数不能带任何参数：VS 用反射（Activator.CreateInstance）创建工具窗口，
+    /// 只认公开无参构造函数。带参数的直接报「没有为该对象定义无参数的构造函数」。
+    /// 曾经从包层一路传进来的 package 参数其实没人用，删掉了。
     /// </summary>
-    internal abstract class WebViewToolWindow : ToolWindowPane
+    public abstract class WebViewToolWindow : ToolWindowPane
     {
         private bool _disposed;
 
-        protected WebViewToolWindow(RaccoonVSPackage package, WebViewPanelHost host)
+        protected WebViewToolWindow(WebViewPanelHost host)
             : base(null)
         {
             Host = host;
