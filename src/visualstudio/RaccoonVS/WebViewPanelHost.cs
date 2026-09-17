@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Controls;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Core;
@@ -45,6 +47,21 @@ namespace RaccoonVS
 
         private static readonly string[] InlineStyleApps = { "ssh" };
 
+        /// <summary>
+        /// 全扩展共用一个 CoreWebView2Environment，环境数据目录显式指到 %LOCALAPPDATA%。
+        ///
+        /// 不显式指的下场是 E_ACCESSDENIED（0x80070005）：WebView2 的默认用户数据目录
+        /// 是「宿主 exe 目录 + .exe.WebView2 后缀」，宿主是 devenv.exe 时就是
+        /// C:\Program Files\...\Common7\IDE\devenv.exe.WebView2——普通用户写不了，
+        /// EnsureCoreWebView2Async 直接拒绝访问。这也是为什么同一份代码在 VS Code
+        /// 版上没事（宿主进程目录可写）、进 VS 就炸。
+        ///
+        /// 环境必须只建一次、全局复用：同一个用户数据目录同时挂两个环境会互相打架，
+        /// 所以建环境的路径加了门闩串行化；建好之后多个面板共用是官方支持的用法。
+        /// </summary>
+        private static readonly SemaphoreSlim EnvironmentGate = new SemaphoreSlim(1, 1);
+        private static CoreWebView2Environment _environment;
+
         private readonly string _app;
         private readonly WebView2 _webView;
         private bool _ready;
@@ -70,6 +87,36 @@ namespace RaccoonVS
             Content = _webView;
             SizeChanged += OnSizeChanged;
             Loaded += OnLoaded;
+        }
+
+        private static async Task<CoreWebView2Environment> GetEnvironmentAsync()
+        {
+            if (_environment != null)
+            {
+                return _environment;
+            }
+
+            await EnvironmentGate.WaitAsync();
+            try
+            {
+                if (_environment == null)
+                {
+                    // LOCALAPPDATA 放这种缓存类数据比 APPDATA 合适：不进漫游。
+                    var userData = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "RaccoonVS", "WebView2");
+                    Directory.CreateDirectory(userData);
+
+                    // browserExecutableFolder 传 null：让 WebView2 用系统安装的 Evergreen
+                    // Runtime（VS 2022 起安装程序强制带），不打包私有运行时。
+                    _environment = await CoreWebView2Environment.CreateAsync(null, userData, null);
+                }
+                return _environment;
+            }
+            finally
+            {
+                EnvironmentGate.Release();
+            }
         }
 
         /// <summary>把消息发给 webview。可在任意线程调用。</summary>
@@ -122,14 +169,15 @@ namespace RaccoonVS
 
             try
             {
-                await _webView.EnsureCoreWebView2Async();
+                await _webView.EnsureCoreWebView2Async(await GetEnvironmentAsync());
             }
             catch (Exception error)
             {
-                // 运行时缺失时这里会失败（VS 2022 安装程序默认带 WebView2 Runtime，
-                // 被组策略屏蔽的机器上才会走到）。给一句能看懂的提示，别让面板一片空白。
+                // 数据目录已经显式指到 %LOCALAPPDATA%，再走到这里只剩两种情况：
+                // 运行时缺失（被组策略屏蔽的机器），或运行时的其他故障。
+                // 给一句能看懂的提示，别让面板一片空白。
                 ShowFailure(error.Message,
-                    "请确认已安装 Microsoft Edge WebView2 Runtime（VS 2022 默认会装）。");
+                    "WebView2 初始化失败。请确认已安装 Microsoft Edge WebView2 Runtime（VS 2022 起默认安装）。");
                 return;
             }
 
